@@ -90,6 +90,11 @@ logmind init               # scaffolds docs/, AGENTS.md, GH Actions, .gitignore 
 
 ## Don'ts
 
+- **Don't use `git add` + `git commit` directly** for changes that carry a
+  decision. `logmind log` writes the decision file, stages every change in
+  the working tree, and creates the commit in one step. Manual `git commit`
+  bypasses the logging entirely or splits it across two commits — both lose
+  the value of reasoning attached to the code.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
