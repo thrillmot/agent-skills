@@ -1,11 +1,15 @@
 ---
 name: logmind
 description: |
-  Decision logging for AI-assisted development. Use this skill in any project
-  that has logmind installed (look for .logmind/config.yml at the repo root,
-  or AGENTS.md/CLAUDE.md mentioning "logmind"). The skill teaches you when
-  and how to log architectural and implementation decisions so future
-  collaborators (human and AI) can recover the "why" behind the code.
+  MUST be loaded for any task in a project that uses logmind (detect by:
+  .logmind/config.yml at repo root, or AGENTS.md / CLAUDE.md mentioning
+  logmind, or docs/decisions.md present). Use BEFORE writing >20 lines of
+  new code, BEFORE choosing between alternatives, BEFORE adding a
+  dependency, BEFORE modifying existing functionality, BEFORE making any
+  security or performance trade-off, BEFORE renaming or moving any
+  significant module. Logging is part of the work, not after it. Also use
+  to read prior decisions before starting any task in such a project so
+  you don't re-litigate something already decided.
 ---
 
 # logmind: log decisions as you work
