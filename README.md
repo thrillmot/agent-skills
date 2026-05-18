@@ -9,6 +9,10 @@ These skills run inside any agent that loads skills.sh — Claude Code, Cursor, 
 | Skill | Purpose |
 |---|---|
 | [`logmind`](skills/logmind/SKILL.md) | Teach agents when and how to log architectural decisions in projects using [logmind](https://logmind.dev). Activates whenever an agent works in a project with `.logmind/config.yml` or an `AGENTS.md`/`CLAUDE.md` mentioning logmind. |
+| [`critical-issues-only`](skills/critical-issues-only/SKILL.md) | PR review discipline — flag only correctness, security, and performance issues. Skip style nits and naming preferences. Ships as a baseline with [clud-bug](https://github.com/thrillmot/clud-bug). |
+| [`evidence-based-review`](skills/evidence-based-review/SKILL.md) | Every PR review claim must quote the specific code being criticized. No hand-waving, no vague "might cause issues." Cite or delete. Ships as a baseline with clud-bug. |
+| [`respect-existing-conventions`](skills/respect-existing-conventions/SKILL.md) | A code review is not a redesign. Don't suggest changes that fight the codebase's established patterns. Match what's already there. Ships as a baseline with clud-bug. |
+| [`clud-bug-collaboration`](skills/clud-bug-collaboration/SKILL.md) | How Claude Code agents working in a clud-bug-installed repo coexist with the bot's review threads, strict-mode gate, and skill set. Activates in any repo with a `clud-bug-review` workflow installed — even if the user didn't mention clud-bug by name. |
 
 ## Install
 
