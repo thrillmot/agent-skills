@@ -1,0 +1,124 @@
+name: validate-skills
+
+# Validate every SKILL.md under skills/<name>/ on PR + push to main.
+# Catches malformed frontmatter (missing name, missing description,
+# name mismatch with directory) before it ships to skills.sh, where
+# downstream consumers (clud-bug, agent runtimes via skills CLI)
+# would silently get broken skills.
+
+on:
+  pull_request:
+    paths:
+      - "skills/**/SKILL.md"
+      - ".github/workflows/validate-skills.yml"
+  push:
+    branches: [main]
+    paths:
+      - "skills/**/SKILL.md"
+      - ".github/workflows/validate-skills.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate every SKILL.md
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          import yaml
+
+          ROOT = Path("skills")
+          FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
+
+          errors: list[str] = []
+
+          if not ROOT.exists() or not ROOT.is_dir():
+              print("::error::skills/ directory not found at repo root")
+              sys.exit(1)
+
+          skill_dirs = sorted(p for p in ROOT.iterdir() if p.is_dir())
+          if not skill_dirs:
+              print("::error::no skill subdirectories under skills/")
+              sys.exit(1)
+
+          for skill_dir in skill_dirs:
+              dir_name = skill_dir.name
+              skill_md = skill_dir / "SKILL.md"
+              prefix = f"{skill_md}"
+
+              if not skill_md.exists():
+                  errors.append(f"::error file={prefix}::missing SKILL.md")
+                  continue
+
+              content = skill_md.read_text(encoding="utf-8")
+              m = FRONTMATTER_RE.match(content)
+              if not m:
+                  errors.append(
+                      f"::error file={prefix}::missing YAML frontmatter "
+                      "(must start with --- ... --- block)"
+                  )
+                  continue
+
+              try:
+                  meta = yaml.safe_load(m.group(1)) or {}
+              except yaml.YAMLError as e:
+                  errors.append(
+                      f"::error file={prefix}::frontmatter is not valid YAML: {e}"
+                  )
+                  continue
+
+              if not isinstance(meta, dict):
+                  errors.append(
+                      f"::error file={prefix}::frontmatter must be a YAML mapping"
+                  )
+                  continue
+
+              name = meta.get("name")
+              if not name or not isinstance(name, str) or not name.strip():
+                  errors.append(
+                      f"::error file={prefix}::frontmatter is missing a non-empty `name:` field"
+                  )
+              elif name.strip() != dir_name:
+                  errors.append(
+                      f"::error file={prefix}::frontmatter name='{name.strip()}' "
+                      f"does not match directory name '{dir_name}'"
+                  )
+
+              description = meta.get("description")
+              if not description or not isinstance(description, str) or not description.strip():
+                  errors.append(
+                      f"::error file={prefix}::frontmatter is missing a non-empty `description:` field"
+                  )
+
+              # Require an H1 (Markdown title) somewhere in the body after the frontmatter
+              body = content[m.end():]
+              if not re.search(r"^# .+", body, flags=re.MULTILINE):
+                  errors.append(
+                      f"::error file={prefix}::body has no top-level `# Title` heading"
+                  )
+
+          if errors:
+              for e in errors:
+                  print(e)
+              print(f"::error::{len(errors)} skill validation errors")
+              sys.exit(1)
+
+          print(f"OK: {len(skill_dirs)} skills validated cleanly.")
+          PY
