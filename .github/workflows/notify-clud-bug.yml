@@ -1,0 +1,114 @@
+name: notify clud-bug on skill change
+
+# When a baseline skill that clud-bug pins via SHA in lib/skills.js
+# changes on main, open an issue on thrillmot/clud-bug so the
+# maintainer knows to bump BASELINE_SKILLS_REF + release a new
+# clud-bug version. Closes the manual-sync chore between this
+# canonical SKILL.md and clud-bug's bundled offline-fallback copy.
+#
+# Only fires when one of the FOUR skills clud-bug pins changes:
+#   - critical-issues-only
+#   - evidence-based-review
+#   - respect-existing-conventions
+#   - clud-bug-collaboration
+#
+# Other skills (logmind, future) aren't pinned by clud-bug so they
+# don't need this notification.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/critical-issues-only/SKILL.md"
+      - "skills/evidence-based-review/SKILL.md"
+      - "skills/respect-existing-conventions/SKILL.md"
+      - "skills/clud-bug-collaboration/SKILL.md"
+
+permissions:
+  # GITHUB_TOKEN can create issues on this repo, but it CAN'T create
+  # issues on a different repo (thrillmot/clud-bug). The workflow
+  # uses a CLUD_BUG_NOTIFY_PAT secret instead — fine-grained PAT
+  # scoped to thrillmot/clud-bug with Issues: write.
+  contents: read
+
+jobs:
+  open-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Identify changed baseline skills
+        id: changes
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          # The 4 skills clud-bug pins. Keep in sync with the `paths:`
+          # filter above.
+          tracked=(critical-issues-only evidence-based-review respect-existing-conventions clud-bug-collaboration)
+          changed=()
+          # git fetch the before SHA so we can diff
+          git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null || true
+          if git cat-file -e "$BEFORE" 2>/dev/null; then
+            diff_files=$(git diff --name-only "$BEFORE...$AFTER" -- 'skills/**/SKILL.md')
+          else
+            # First push to main or shallow clone fallback — assume all 4 changed
+            diff_files=$(printf "skills/%s/SKILL.md\n" "${tracked[@]}")
+          fi
+          for skill in "${tracked[@]}"; do
+            if echo "$diff_files" | grep -qx "skills/${skill}/SKILL.md"; then
+              changed+=("$skill")
+            fi
+          done
+          if [ ${#changed[@]} -eq 0 ]; then
+            echo "No baseline skill changed in this push; skipping."
+            exit 0
+          fi
+          # Newline-separated for the issue body
+          printf '%s\n' "${changed[@]}" > /tmp/changed-skills.txt
+          echo "changed_count=${#changed[@]}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${AFTER}" >> "$GITHUB_OUTPUT"
+
+      - name: Open issue on thrillmot/clud-bug
+        if: steps.changes.outputs.changed_count != ''
+        env:
+          GH_TOKEN: ${{ secrets.CLUD_BUG_NOTIFY_PAT }}
+          HEAD_SHA: ${{ steps.changes.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::CLUD_BUG_NOTIFY_PAT secret missing — install a fine-grained PAT scoped to thrillmot/clud-bug with Issues: write to enable this notifier."
+            exit 0
+          fi
+          changed_md=$(awk '{print "- `" $0 "`"}' /tmp/changed-skills.txt)
+          body=$(cat <<EOF
+          One or more clud-bug baseline skills changed on agent-skills' \`main\`.
+          Bump \`BASELINE_SKILLS_REF\` in \`lib/skills.js\` to:
+
+              ${HEAD_SHA}
+
+          Then sync the bundled offline-fallback copies under
+          \`templates/skills/baseline/\` from the new agent-skills HEAD,
+          test, and release a new clud-bug patch.
+
+          ## Changed skills
+          ${changed_md}
+
+          ## Why
+          clud-bug fetches each baseline SKILL.md from agent-skills at
+          install/update time using the SHA pin. Until the SHA bumps,
+          installed clud-bugs continue to fetch the OLDER version — the
+          bundled offline fallback is the only safety net against drift.
+
+          ## Source change
+          https://github.com/thrillmot/agent-skills/commit/${HEAD_SHA}
+
+          ## Auto-generated
+          Opened by \`agent-skills/.github/workflows/notify-clud-bug.yml\`.
+          EOF
+          )
+          gh issue create \
+            --repo thrillmot/clud-bug \
+            --title "agent-skills: baseline skills changed — bump BASELINE_SKILLS_REF" \
+            --label "deps,from-agent-skills" \
+            --body "$body" \
+            || echo "::warning::failed to open issue on clud-bug (likely a missing label — re-run after creating the labels, or remove --label)"
