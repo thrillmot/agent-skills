@@ -131,8 +131,9 @@ logmind search "postgres"  # full-text across both files
 ## Verifying install health
 
 `logmind doctor` (v0.2.4+) reports installed-vs-latest versions for logmind
-(and clud-bug if present), flags stale workflow templates against bundled
-markers, and exits non-zero on drift so it's CI-pluggable.
+(and clud-bug if present), flags stale workflow templates AND a stale
+`AGENTS.md` block-version (v0.2.9+) against bundled markers, and exits
+non-zero on drift so it's CI-pluggable.
 
 ```bash
 logmind doctor             # one-shot status table
@@ -142,8 +143,43 @@ logmind doctor --exit-zero # always exit 0 (informational CI runs)
 ```
 
 Run after `logmind init` to confirm a clean install, or any time
-templates / pins might have drifted. Stale-pin drift is auto-healed by
-`logmind init` itself in v0.2.5+, even when no template body changed.
+templates / pins / instructions might have drifted. Stale-pin drift is
+auto-healed by `logmind init` itself in v0.2.5+, even when no template
+body changed. **If `doctor` reports an `AGENTS.md` stale row, your repo's
+embedded logmind instructions are older than what the installed logmind
+would write — re-run `logmind init` to refresh in place.**
+
+## Upgrading: `logmind init` prints the changelog
+
+When you run `pip install --upgrade logmind && logmind init` in an
+already-initialized repo (v0.2.10+), refresh-mode detects the prior
+pinned version from `regen-timeline.yml` and prints **every CHANGELOG
+section between that version and the currently installed
+`__version__`** inline:
+
+```
+📋 What's new in logmind since v0.2.6 (currently installed: v0.2.10):
+
+## [0.2.10] - ...
+### Added
+- logmind init refresh-mode prints CHANGELOG sections...
+
+## [0.2.9] - ...
+### Changed
+- actions/checkout@v4 → @v6 across all shipped templates...
+
+...
+```
+
+Read it. The whole point is that your in-session memory might predate
+the upgrade, and the printed sections tell you exactly what changed.
+Common deltas you'll see if you're upgrading across a stretch:
+
+- **v0.2.7**: `logmind log` defaults to `--stage all` (single
+  add+commit+push primitive — stop running `git add` first).
+- **v0.2.9**: `logmind log` prints a visible `--stage` notice on every
+  invocation so the actual behavior is unmissable in output.
+- **v0.2.9**: `logmind doctor` flags stale `AGENTS.md` block-version.
 
 ## Setup (one-time, per project)
 
