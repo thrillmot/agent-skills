@@ -57,8 +57,9 @@ log("Use PostgreSQL for primary database",
 
 ## What `logmind log` does automatically
 
-A single `logmind log` invocation handles all of this — you do NOT need to
-follow up with manual `git add`, `git commit`, or `logmind timeline --write`:
+A single `logmind log` invocation is the complete `git add` + `git commit` +
+`git push` primitive — you do NOT need to follow up with any manual git
+command, and you do NOT need to run `logmind timeline --write` separately:
 
 1. Appends the decision entry to the active log file (default branch →
    `docs/decisions.md`; feature branch → `docs/decisions-branches/<branch>.md`).
@@ -66,27 +67,41 @@ follow up with manual `git add`, `git commit`, or `logmind timeline --write`:
 3. Regenerates `docs/file-structure.md` (default branch only — on feature
    branches the tree snapshot diverges and would conflict).
 4. **Regenerates `docs/timeline.md` on every branch (v0.2.3+)** — the derived
-   index that `check-derived-docs` CI verifies. Auto-staged into the same
-   commit, so no extra `logmind timeline --write` step is needed.
-5. Stages the touched files (see `--stage` below).
-6. Creates the commit with message `logmind: <decision>`.
-7. Pushes to remote (`auto_push: true` in config).
+   index that `check-derived-docs` CI verifies.
+5. **`git add` every change in the working tree (default since v0.2.7)** —
+   so the decision and the code that prompted it travel together in one
+   commit. Override with `--stage scoped` if you have unrelated WIP.
+6. **`git commit`** with message `logmind: <decision>`.
+7. **`git push`** to remote (configurable via `auto_push` in
+   `.logmind/config.yml`).
 
-## `--stage scoped` (default) vs `--stage all`
+## `logmind log` IS the commit primitive (no manual git after it)
 
-- **`--stage scoped` (default — use this 95% of the time):** stages ONLY
-  the decision file, `file-structure.md`, archive (if rotated), and
-  `timeline.md` (if regenerated). Unrelated working-tree changes stay
-  unstaged — log the decision first, then commit the code separately.
-- **`--stage all`:** stages everything in the working tree alongside the
-  decision. Use ONLY when the code change and the decision genuinely belong
-  in the same atomic commit (rare — usually you want them as two commits in
-  the same PR so the decision is reviewable on its own).
+`logmind log` defaults to `--stage all` (since v0.2.7): every change in
+the working tree gets bundled into the decision commit. No follow-up
+`git add`, no follow-up `git commit`, no follow-up `git push`. One command,
+one commit, working tree clean.
 
-Both modes regenerate and stage `timeline.md`. If you ever find yourself
-running `logmind timeline --write docs/timeline.md` after a `logmind log`,
-something's wrong (most likely an older logmind version — check `logmind
---version` and `logmind doctor`).
+If you find yourself running `git add`, `git commit`, `git push`, or
+`logmind timeline --write` **after** a `logmind log`, you're working
+against the design. Two likely causes:
+
+1. **Pre-v0.2.7 logmind installed** — check `logmind --version` and
+   `logmind doctor`. v0.2.6 and earlier defaulted to `--stage scoped`.
+2. **You actually need `--stage scoped`** — see below.
+
+### `--stage scoped` (escape hatch)
+
+Pass `--stage scoped` to stage only the decision file + companion files
+(`file-structure.md`, archive if rotated, `timeline.md` if regenerated).
+Unrelated working-tree changes stay unstaged. Use when:
+
+- You have WIP in the working tree you don't want to commit yet.
+- You're doing a multi-step refactor where the decision should be
+  reviewable on its own, separately from the implementation.
+
+Rare for automated agents — they should be working on one task at a
+time and want the single-commit shape.
 
 ## Branch-aware routing (automatic)
 
@@ -142,11 +157,17 @@ logmind doctor             # confirm clean install
 
 ## Don'ts
 
-- **Don't use `git add` + `git commit` directly** for changes that carry a
-  decision. `logmind log` writes the decision file, stages the touched
-  files, and creates the commit in one step. Manual `git commit` either
-  bypasses the logging entirely or splits it across two commits — both
-  lose the value of having the reasoning attached to the code change.
+- **Don't run `git add`, `git commit`, or `git push` for changes that
+  carry a decision.** `logmind log` is the commit primitive — it handles
+  all three in one step. Running them manually either bypasses the
+  logging entirely or splits the work across separate commits, both of
+  which lose the value of having the reasoning attached to the code.
+- **Don't run `git add` BEFORE `logmind log` either.** Default
+  `--stage all` already sweeps the working tree; pre-staging is
+  redundant. (Exception: if you're using `--stage scoped` and have
+  extra files you specifically want included, pre-stage them and they
+  carry through — but `--stage all` is the right answer 99% of the
+  time for agents.)
 - **Don't run `logmind timeline --write docs/timeline.md` after a `logmind
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
