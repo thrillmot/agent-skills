@@ -10,6 +10,7 @@ description: |
   significant module. Logging is part of the work, not after it. Also use
   to read prior decisions before starting any task in such a project so
   you don't re-litigate something already decided.
+review_mode: shared
 ---
 
 # logmind: log decisions as you work

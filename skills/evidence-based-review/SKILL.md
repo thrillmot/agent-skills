@@ -1,6 +1,7 @@
 ---
 name: evidence-based-review
 description: Every PR review claim must quote the specific code being criticized. No hand-waving.
+review_mode: shared
 ---
 
 # Evidence-based review
