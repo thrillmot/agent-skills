@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-27** — fix(notify-clud-bug.yml): pipefail-safe the detect grep (zero-matches no-op) *(fix/notify-clud-bug-pipefail-grep)* — [decisions-branches/fix__notify-clud-bug-pipefail-grep.md](decisions-branches/fix__notify-clud-bug-pipefail-grep.md)
 - **2026-05-27** — chore: add test.yml stub for org ruleset uniformity *(chore/add-test-workflow-stub)* — [decisions-branches/chore__add-test-workflow-stub.md](decisions-branches/chore__add-test-workflow-stub.md)
 - **2026-05-27** — fix: fetch-depth 2→0 + handle first-push zero-ref BEFORE (clud-bug critical) *(feat/notify-clud-bug-push-trigger)* — [decisions-branches/feat__notify-clud-bug-push-trigger.md](decisions-branches/feat__notify-clud-bug-push-trigger.md)
 - **2026-05-27** — feat(notify-clud-bug.yml): add push trigger with matrix strategy over changed baselines *(feat/notify-clud-bug-push-trigger)* — [decisions-branches/feat__notify-clud-bug-push-trigger.md](decisions-branches/feat__notify-clud-bug-push-trigger.md)
