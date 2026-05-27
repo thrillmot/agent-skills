@@ -6,17 +6,18 @@ name: sync skill to clud-bug
 # v0.x workflow that opened an issue with "you should update X" instructions
 # the maintainer then applied by hand — the PR shape applies them directly.
 #
-# Trigger: workflow_dispatch only during the smoke-test phase. Once the
-# produced PRs look right, a follow-up one-line edit adds an `on: push`
-# trigger that fires automatically on changes to the matching SKILL.md files
-# on main. Conservatively starting manual to minimise blast radius if the
-# transform misfires.
+# Triggers:
+#   - workflow_dispatch with a `skill_name` choice — for manual re-runs or
+#     forcing a specific skill's refresh.
+#   - push to main on changes to any tracked baseline SKILL.md path — fires
+#     automatically per baseline-skill commit. The detect job below figures
+#     out which of the 4 baselines actually changed (matrix strategy per
+#     option (a) in the agent-skills handoff). Confirmed safe after the
+#     smoke-test phase (manual dispatch from main) produced shape-correct
+#     PRs on clud-bug.
 #
 # Auth: CLUD_BUG_NOTIFY_PAT — fine-grained PAT scoped to thrillmade/clud-bug
-# with Contents: write + Pull requests: write. (Pre-v0.6 of this workflow
-# the same secret only needed Issues: write; rotate the token's scope when
-# enabling this workflow, otherwise the push or `gh pr create` step fails
-# with a 403.)
+# with Contents: write + Pull requests: write.
 
 on:
   workflow_dispatch:
@@ -30,19 +31,103 @@ on:
           - evidence-based-review
           - respect-existing-conventions
           - clud-bug-collaboration
+  push:
+    branches: [main]
+    paths:
+      - 'skills/critical-issues-only/SKILL.md'
+      - 'skills/evidence-based-review/SKILL.md'
+      - 'skills/respect-existing-conventions/SKILL.md'
+      - 'skills/clud-bug-collaboration/SKILL.md'
 
 permissions:
   contents: read
 
 jobs:
-  sync:
+  detect:
+    # Resolves which skills should fan out to the sync job. For
+    # workflow_dispatch the answer is the single chosen input. For push the
+    # answer is whichever of the 4 tracked baselines actually had its
+    # SKILL.md touched in the pushed commits. Emits a JSON array consumed
+    # by the sync job's matrix strategy.
     runs-on: ubuntu-latest
+    outputs:
+      skills: ${{ steps.resolve.outputs.skills }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # fetch-depth: 0 = full history. Required because a push with
+          # N>2 commits has `$BEFORE` outside a fetch-depth:2 shallow
+          # clone — `git diff $BEFORE $AFTER` then produces no output,
+          # the matrix goes empty, and the workflow silently no-ops on
+          # a multi-commit baseline-skill push. Full history also lets
+          # the "first push to a new branch" case (BEFORE=00000...)
+          # be detected and handled below without further fetches.
+          fetch-depth: 0
+
+      - id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_SKILL: ${{ inputs.skill_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # Single skill from the dispatch input — emit a 1-element array.
+            printf 'skills=["%s"]\n' "$DISPATCH_SKILL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Push event — diff BEFORE..AFTER and extract which tracked
+          # baselines were touched. The path filter above already
+          # guarantees at least one match, but we still detect precisely
+          # so the matrix only fans out to changed skills (saves runtime
+          # and avoids no-op PRs on unrelated baselines).
+          BASELINES='critical-issues-only|evidence-based-review|respect-existing-conventions|clud-bug-collaboration'
+
+          # Edge case: first push to main (e.g. repo init) has
+          # BEFORE=0000000000000000000000000000000000000000. There's
+          # nothing to diff against, so treat as "all baselines may be
+          # new" — emit the full list and let the per-skill diff vs.
+          # bundled (compare source vs bundled step below) decide
+          # which to actually sync.
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "::notice::Push BEFORE is the zero ref — treating as first push, fanning out to all 4 baselines."
+            printf 'skills=["critical-issues-only","evidence-based-review","respect-existing-conventions","clud-bug-collaboration"]\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" \
+            | grep -oE "skills/(${BASELINES})/SKILL\.md" \
+            | sed -E 's|skills/(.+)/SKILL\.md|\1|' \
+            | sort -u \
+            | jq -R . \
+            | jq -s -c .)
+          if [ "$CHANGED" = "[]" ]; then
+            # Path filter said "yes" but diff said "no" — most likely a
+            # force-push that rewrote history. Treat as no-op.
+            echo "::notice::Push event touched none of the tracked baselines after diff. Nothing to sync."
+            printf 'skills=[]\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'skills=%s\n' "$CHANGED" >> "$GITHUB_OUTPUT"
+          fi
+
+  sync:
+    needs: detect
+    if: ${{ needs.detect.outputs.skills != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast: false so one skill's transform failure doesn't cancel
+      # the sibling skills' parallel syncs. Each baseline is independent.
+      fail-fast: false
+      matrix:
+        skill: ${{ fromJson(needs.detect.outputs.skills) }}
     steps:
       - name: Checkout agent-skills
         uses: actions/checkout@v6
 
       - name: Verify source SKILL.md exists
-        run: test -f "skills/${{ inputs.skill_name }}/SKILL.md"
+        run: test -f "skills/${{ matrix.skill }}/SKILL.md"
 
       - name: Compute source SHA and short SHA
         id: src
@@ -52,7 +137,7 @@ jobs:
           SHORT="${SHA:0:7}"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "short=${SHORT}" >> "$GITHUB_OUTPUT"
-          echo "branch=skills-refresh/${{ inputs.skill_name }}-${SHORT}" >> "$GITHUB_OUTPUT"
+          echo "branch=skills-refresh/${{ matrix.skill }}-${SHORT}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout thrillmade/clud-bug
         uses: actions/checkout@v6
@@ -90,17 +175,17 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          SRC="skills/${{ inputs.skill_name }}/SKILL.md"
-          DST="clud-bug/templates/skills/baseline/${{ inputs.skill_name }}.md"
+          SRC="skills/${{ matrix.skill }}/SKILL.md"
+          DST="clud-bug/templates/skills/baseline/${{ matrix.skill }}.md"
           if [ ! -f "$DST" ]; then
-            echo "::error::Bundled copy ${DST} not found in clud-bug — the skill_name input may not be a tracked baseline."
+            echo "::error::Bundled copy ${DST} not found in clud-bug — the matrix.skill input may not be a tracked baseline."
             exit 1
           fi
           if diff -q "$SRC" "$DST" >/dev/null 2>&1; then
             # Bundled is byte-identical to source. The pin may still be stale,
             # but the content sync would be a no-op — and the version bump
             # would be churn. Skip; a future change to the source re-triggers.
-            echo "::notice::Source and bundled copies of ${{ inputs.skill_name }} are byte-identical — nothing to sync."
+            echo "::notice::Source and bundled copies of ${{ matrix.skill }} are byte-identical — nothing to sync."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -110,7 +195,7 @@ jobs:
         env:
           SHA: ${{ steps.src.outputs.sha }}
           SHORT: ${{ steps.src.outputs.short }}
-          SKILL: ${{ inputs.skill_name }}
+          SKILL: ${{ matrix.skill }}
         run: |
           set -euo pipefail
           # 1. Copy source SKILL.md into bundled location.
@@ -179,7 +264,8 @@ jobs:
           SHA: ${{ steps.src.outputs.sha }}
           SHORT: ${{ steps.src.outputs.short }}
           BRANCH: ${{ steps.src.outputs.branch }}
-          SKILL: ${{ inputs.skill_name }}
+          SKILL: ${{ matrix.skill }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           git config user.name "agent-skills-sync[bot]"
@@ -191,6 +277,7 @@ jobs:
 
           PR_BODY="Automated bundled-copy sync from \`thrillmade/agent-skills\`.
 
+          **Trigger:** \`${EVENT}\` on \`thrillmade/agent-skills\`.
           **Source SKILL.md:** https://github.com/thrillmade/agent-skills/blob/${SHA}/skills/${SKILL}/SKILL.md
           **Source commit:** https://github.com/thrillmade/agent-skills/commit/${SHA}
 
@@ -203,7 +290,7 @@ jobs:
 
           ## How this was generated
 
-          \`agent-skills/.github/workflows/notify-clud-bug.yml\` (\`workflow_dispatch\`) — invoked manually during the smoke-test phase. A future change to that workflow will add an \`on: push\` auto-trigger once the produced PRs are confirmed sane."
+          \`agent-skills/.github/workflows/notify-clud-bug.yml\` — fires on push to \`main\` matching one of the tracked baseline-skill paths, or via manual \`workflow_dispatch\` for a chosen skill."
 
           gh pr create \
             --repo thrillmade/clud-bug \
