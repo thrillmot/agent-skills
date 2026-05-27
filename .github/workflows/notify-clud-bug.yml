@@ -160,6 +160,17 @@ jobs:
           ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
           rm "$ENTRY_FILE"
 
+          # Verify the entry actually landed. Mirrors the sed-then-grep check
+          # above so the awk can't silently no-op if clud-bug's [Unreleased]
+          # header shape ever drifts (e.g. "## [Unreleased] - 2026-XX-YY").
+          # Without this, the version + pin bump would still ship but the
+          # CHANGELOG entry would be missing, and the failure would only
+          # surface on maintainer review.
+          if ! grep -qF "[${NEW_VERSION}]" CHANGELOG.md; then
+            echo "::error::CHANGELOG entry for ${NEW_VERSION} not inserted — check the [Unreleased] header shape in clud-bug's CHANGELOG.md."
+            exit 1
+          fi
+
       - name: Commit + push + open PR
         if: steps.existing.outputs.skip != 'true' && steps.diff.outputs.skip != 'true'
         working-directory: clud-bug
