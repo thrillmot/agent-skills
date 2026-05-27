@@ -15,5 +15,6 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-27** — Document logmind v0.3.0 merge-driver surface in skills/logmind/SKILL.md *(docs/logmind-v0.3.0)* — [decisions-branches/docs__logmind-v0.3.0.md](decisions-branches/docs__logmind-v0.3.0.md)
 - **2026-05-26** — chore: migrate to thrillmade org + install logmind v0.3.0 + clud-bug *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)

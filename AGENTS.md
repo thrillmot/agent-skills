@@ -7,7 +7,7 @@ files like `CLAUDE.md` or `.cursorrules` are stubs that point here so the
 guidance lives in one place.
 
 <!-- logmind-start -->
-<!-- logmind-block-version: v4-slim -->
+<!-- logmind-block-version: v5-slim -->
 ## Decision logging — `logmind log` is the commit primitive
 
 This project uses [logmind](https://logmind.dev) for decision logging. **`logmind log` replaces `git add`, `git commit`, and `git push`** for any change that carries a decision. Do not run those git commands directly when logging a decision — `logmind log` does all three in one step.
@@ -33,10 +33,10 @@ That's it. No follow-up `git add`, no follow-up `git commit`, no follow-up `git 
 
 ### The full skill
 
-The complete procedure (when something counts as a decision, branch routing, doctor, refresh patterns) lives in the **`logmind` agent skill** at https://github.com/thrillmot/agent-skills/tree/main/skills/logmind. Most agent runtimes auto-load it. If yours doesn't:
+The complete procedure (when something counts as a decision, branch routing, doctor, refresh patterns) lives in the **`logmind` agent skill** at https://github.com/thrillmade/agent-skills/tree/main/skills/logmind. Most agent runtimes auto-load it. If yours doesn't:
 
 ```bash
-npx skills add https://github.com/thrillmot/agent-skills --skill logmind
+npx skills add https://github.com/thrillmade/agent-skills --skill logmind
 ```
 
 ### Required reading before non-trivial work
