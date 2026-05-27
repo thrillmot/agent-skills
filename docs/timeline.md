@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-27** — feat(notify-clud-bug.yml): add push trigger with matrix strategy over changed baselines *(feat/notify-clud-bug-push-trigger)* — [decisions-branches/feat__notify-clud-bug-push-trigger.md](decisions-branches/feat__notify-clud-bug-push-trigger.md)
 - **2026-05-27** — chore: bump logmind pin 0.3.0 → 0.3.3 *(chore/bump-logmind-pin-0.3.3)* — [decisions-branches/chore__bump-logmind-pin-0.3.3.md](decisions-branches/chore__bump-logmind-pin-0.3.3.md)
 - **2026-05-27** — Rewrite notify-clud-bug.yml as mechanical PR-opener (workflow_dispatch only) *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
 - **2026-05-27** — Add review_mode: shared to all baseline-type skill frontmatters *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
