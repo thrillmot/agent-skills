@@ -97,8 +97,15 @@ jobs:
             exit 0
           fi
 
+          # `|| true` after grep guards against the zero-matches case:
+          # grep exits 1 when nothing matches, and `set -euo pipefail`
+          # would otherwise abort the whole step before the empty-array
+          # branch below can run. That case is real — force-pushes can
+          # bring `BEFORE..AFTER` outside the path filter's match set,
+          # and the workflow needs to treat it as a graceful no-op, not
+          # a red failure.
           CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" \
-            | grep -oE "skills/(${BASELINES})/SKILL\.md" \
+            | { grep -oE "skills/(${BASELINES})/SKILL\.md" || true; } \
             | sed -E 's|skills/(.+)/SKILL\.md|\1|' \
             | sort -u \
             | jq -R . \
