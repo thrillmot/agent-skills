@@ -55,9 +55,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          # fetch-depth: 2 is enough for the `git diff before..after`
-          # against the push event. For workflow_dispatch this is unused.
-          fetch-depth: 2
+          # fetch-depth: 0 = full history. Required because a push with
+          # N>2 commits has `$BEFORE` outside a fetch-depth:2 shallow
+          # clone — `git diff $BEFORE $AFTER` then produces no output,
+          # the matrix goes empty, and the workflow silently no-ops on
+          # a multi-commit baseline-skill push. Full history also lets
+          # the "first push to a new branch" case (BEFORE=00000...)
+          # be detected and handled below without further fetches.
+          fetch-depth: 0
 
       - id: resolve
         env:
@@ -79,6 +84,19 @@ jobs:
           # so the matrix only fans out to changed skills (saves runtime
           # and avoids no-op PRs on unrelated baselines).
           BASELINES='critical-issues-only|evidence-based-review|respect-existing-conventions|clud-bug-collaboration'
+
+          # Edge case: first push to main (e.g. repo init) has
+          # BEFORE=0000000000000000000000000000000000000000. There's
+          # nothing to diff against, so treat as "all baselines may be
+          # new" — emit the full list and let the per-skill diff vs.
+          # bundled (compare source vs bundled step below) decide
+          # which to actually sync.
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "::notice::Push BEFORE is the zero ref — treating as first push, fanning out to all 4 baselines."
+            printf 'skills=["critical-issues-only","evidence-based-review","respect-existing-conventions","clud-bug-collaboration"]\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" \
             | grep -oE "skills/(${BASELINES})/SKILL\.md" \
             | sed -E 's|skills/(.+)/SKILL\.md|\1|' \

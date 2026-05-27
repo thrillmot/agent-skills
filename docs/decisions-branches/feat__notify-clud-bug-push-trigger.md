@@ -9,3 +9,11 @@
 - fail-fast: false in matrix so one skill's transform failure doesn't cancel siblings
 
 ---
+## 2026-05-27 07:38 - fix: fetch-depth 2→0 + handle first-push zero-ref BEFORE (clud-bug critical)
+
+**Reasoning:** Also handle BEFORE=0000... (first push to main) — treat as 'all 4 baselines might need sync' and let the per-skill bundled-byte-comparison decide
+
+**Implications:**
+- fetch-depth: 0 trades clone speed for correctness — agent-skills is small (~hundreds of commits), the cost is negligible
+
+---
