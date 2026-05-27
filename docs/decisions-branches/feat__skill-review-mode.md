@@ -22,3 +22,13 @@
 - Side-effects asserted by step 'Apply sync': sed regex match on the BASELINE_SKILLS_REF line is verified by grep after; if the constant's declaration shape ever changes the workflow fails with a specific error rather than silently no-opping. node used for package.json edits (no jq dep).
 
 ---
+## 2026-05-27 06:46 - Add verify-after-write grep check to CHANGELOG insertion in notify-clud-bug.yml
+
+**Reasoning:** clud-bug-review flagged a minor finding on the prior pass: the sed for BASELINE_SKILLS_REF in the same step had a paired grep-q post-check that fails loudly if the regex didn't match, but the awk that prepends the CHANGELOG entry under ## [Unreleased] had no symmetric verify. A drift in clud-bug's [Unreleased] header shape (e.g. '## [Unreleased] - 2026-XX-YY' or capitalisation changes) would silently no-op the awk while the version+pin bumps still ship — leaving the PR without a CHANGELOG entry, only caught on maintainer review. The fix mirrors the sed-then-grep pattern from one stanza above, making the awk failure as loud as the sed failure. Matches the defensive pattern the rest of the file already establishes.
+
+**Alternatives considered:** Leave as minor, ship without the check — rejected: the reviewer's argument is correct, and the cost is one grep line., Generalise to a 'verify each transform' helper function — rejected: only two transforms in this workflow, premature abstraction.
+
+**Implications:**
+- Workflow now exits non-zero with a specific :error: annotation if CHANGELOG entry insertion fails, pointing at the [Unreleased] header shape as the likely cause. Matches the BASELINE_SKILLS_REF failure mode.
+
+---

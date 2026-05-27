@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-27** — Add verify-after-write grep check to CHANGELOG insertion in notify-clud-bug.yml *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
 - **2026-05-27** — Rewrite notify-clud-bug.yml as mechanical PR-opener (workflow_dispatch only) *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
 - **2026-05-27** — Add review_mode: shared to all baseline-type skill frontmatters *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
 - **2026-05-27** — Add .github/dependabot.yml for github-actions ecosystem only *(chore/dependabot)* — [decisions-branches/chore__dependabot.md](decisions-branches/chore__dependabot.md)
