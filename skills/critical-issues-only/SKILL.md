@@ -1,4 +1,3 @@
-<!-- smoke marker -->
 ---
 name: critical-issues-only
 description: PR review discipline - flag only correctness, security, and performance issues. Skip nits.
