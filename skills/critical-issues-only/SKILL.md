@@ -1,6 +1,7 @@
 ---
 name: critical-issues-only
 description: PR review discipline - flag only correctness, security, and performance issues. Skip nits.
+review_mode: shared
 ---
 
 # Critical issues only
