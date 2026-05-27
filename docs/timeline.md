@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-27** — Add skill-frontmatter-quality + exclude clud-bug-collaboration from this repo's clud-bug baseline *(chore/curated-clud-bug-baseline)* — [decisions-branches/chore__curated-clud-bug-baseline.md](decisions-branches/chore__curated-clud-bug-baseline.md)
 - **2026-05-27** — chore: regen docs/file-structure.md (drop legacy Last updated line) *(chore/regen-derived-docs)* — [decisions-branches/chore__regen-derived-docs.md](decisions-branches/chore__regen-derived-docs.md)
 - **2026-05-27** — fix(notify-clud-bug.yml): pipefail-safe the detect grep (zero-matches no-op) *(fix/notify-clud-bug-pipefail-grep)* — [decisions-branches/fix__notify-clud-bug-pipefail-grep.md](decisions-branches/fix__notify-clud-bug-pipefail-grep.md)
 - **2026-05-27** — chore: add test.yml stub for org ruleset uniformity *(chore/add-test-workflow-stub)* — [decisions-branches/chore__add-test-workflow-stub.md](decisions-branches/chore__add-test-workflow-stub.md)
