@@ -1,0 +1,22 @@
+name: test
+
+# Skill repo doesn't ship runtime code, so `test` here is a stub that
+# reports success unconditionally. Exists so the org ruleset's `test`
+# required_status_check has something to gate on. Replace with a real
+# test job (e.g. SKILL.md frontmatter schema validator beyond what
+# `validate skills` covers, link checks beyond `check-links`) once the
+# repo grows beyond markdown.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'
