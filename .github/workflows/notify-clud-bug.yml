@@ -1,114 +1,202 @@
-name: notify clud-bug on skill change
+name: sync skill to clud-bug
 
-# When a baseline skill that clud-bug pins via SHA in lib/skills.js
-# changes on main, open an issue on thrillmade/clud-bug so the
-# maintainer knows to bump BASELINE_SKILLS_REF + release a new
-# clud-bug version. Closes the manual-sync chore between this
-# canonical SKILL.md and clud-bug's bundled offline-fallback copy.
+# Open a PR on thrillmade/clud-bug refreshing one bundled baseline SKILL.md
+# from the current state of this repo, plus the BASELINE_SKILLS_REF pin in
+# lib/skills.js, plus a patch version bump and CHANGELOG entry. Replaces the
+# v0.x workflow that opened an issue with "you should update X" instructions
+# the maintainer then applied by hand — the PR shape applies them directly.
 #
-# Only fires when one of the FOUR skills clud-bug pins changes:
-#   - critical-issues-only
-#   - evidence-based-review
-#   - respect-existing-conventions
-#   - clud-bug-collaboration
+# Trigger: workflow_dispatch only during the smoke-test phase. Once the
+# produced PRs look right, a follow-up one-line edit adds an `on: push`
+# trigger that fires automatically on changes to the matching SKILL.md files
+# on main. Conservatively starting manual to minimise blast radius if the
+# transform misfires.
 #
-# Other skills (logmind, future) aren't pinned by clud-bug so they
-# don't need this notification.
+# Auth: CLUD_BUG_NOTIFY_PAT — fine-grained PAT scoped to thrillmade/clud-bug
+# with Contents: write + Pull requests: write. (Pre-v0.6 of this workflow
+# the same secret only needed Issues: write; rotate the token's scope when
+# enabling this workflow, otherwise the push or `gh pr create` step fails
+# with a 403.)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "skills/critical-issues-only/SKILL.md"
-      - "skills/evidence-based-review/SKILL.md"
-      - "skills/respect-existing-conventions/SKILL.md"
-      - "skills/clud-bug-collaboration/SKILL.md"
+  workflow_dispatch:
+    inputs:
+      skill_name:
+        description: 'Baseline skill slug to sync into clud-bug'
+        required: true
+        type: choice
+        options:
+          - critical-issues-only
+          - evidence-based-review
+          - respect-existing-conventions
+          - clud-bug-collaboration
 
 permissions:
-  # GITHUB_TOKEN can create issues on this repo, but it CAN'T create
-  # issues on a different repo (thrillmade/clud-bug). The workflow
-  # uses a CLUD_BUG_NOTIFY_PAT secret instead — fine-grained PAT
-  # scoped to thrillmade/clud-bug with Issues: write.
   contents: read
 
 jobs:
-  open-issue:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Identify changed baseline skills
-        id: changes
-        env:
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after }}
+      - name: Checkout agent-skills
+        uses: actions/checkout@v6
+
+      - name: Verify source SKILL.md exists
+        run: test -f "skills/${{ inputs.skill_name }}/SKILL.md"
+
+      - name: Compute source SHA and short SHA
+        id: src
         run: |
           set -euo pipefail
-          # The 4 skills clud-bug pins. Keep in sync with the `paths:`
-          # filter above.
-          tracked=(critical-issues-only evidence-based-review respect-existing-conventions clud-bug-collaboration)
-          changed=()
-          # git fetch the before SHA so we can diff
-          git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null || true
-          if git cat-file -e "$BEFORE" 2>/dev/null; then
-            diff_files=$(git diff --name-only "$BEFORE...$AFTER" -- 'skills/**/SKILL.md')
-          else
-            # First push to main or shallow clone fallback — assume all 4 changed
-            diff_files=$(printf "skills/%s/SKILL.md\n" "${tracked[@]}")
-          fi
-          for skill in "${tracked[@]}"; do
-            if echo "$diff_files" | grep -qx "skills/${skill}/SKILL.md"; then
-              changed+=("$skill")
-            fi
-          done
-          if [ ${#changed[@]} -eq 0 ]; then
-            echo "No baseline skill changed in this push; skipping."
-            exit 0
-          fi
-          # Newline-separated for the issue body
-          printf '%s\n' "${changed[@]}" > /tmp/changed-skills.txt
-          echo "changed_count=${#changed[@]}" >> "$GITHUB_OUTPUT"
-          echo "head_sha=${AFTER}" >> "$GITHUB_OUTPUT"
+          SHA="$(git rev-parse HEAD)"
+          SHORT="${SHA:0:7}"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "short=${SHORT}" >> "$GITHUB_OUTPUT"
+          echo "branch=skills-refresh/${{ inputs.skill_name }}-${SHORT}" >> "$GITHUB_OUTPUT"
 
-      - name: Open issue on thrillmade/clud-bug
-        if: steps.changes.outputs.changed_count != ''
+      - name: Checkout thrillmade/clud-bug
+        uses: actions/checkout@v6
+        with:
+          repository: thrillmade/clud-bug
+          path: clud-bug
+          token: ${{ secrets.CLUD_BUG_NOTIFY_PAT }}
+
+      - name: Verify CLUD_BUG_NOTIFY_PAT has push + PR scope
         env:
           GH_TOKEN: ${{ secrets.CLUD_BUG_NOTIFY_PAT }}
-          HEAD_SHA: ${{ steps.changes.outputs.head_sha }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::CLUD_BUG_NOTIFY_PAT secret missing. Install a fine-grained PAT scoped to thrillmade/clud-bug with Contents: write + Pull requests: write."
+            exit 1
+          fi
+          # Surfaces the scope mismatch loudly before we try to mutate the repo.
+          gh api repos/thrillmade/clud-bug --jq '.full_name' > /dev/null
+
+      - name: Short-circuit if PR already open for this branch
+        id: existing
+        working-directory: clud-bug
+        env:
+          GH_TOKEN: ${{ secrets.CLUD_BUG_NOTIFY_PAT }}
         run: |
           set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::warning::CLUD_BUG_NOTIFY_PAT secret missing — install a fine-grained PAT scoped to thrillmade/clud-bug with Issues: write to enable this notifier."
-            exit 0
+          NUM="$(gh pr list --head '${{ steps.src.outputs.branch }}' --state open --json number --jq '.[0].number // ""')"
+          if [ -n "$NUM" ]; then
+            echo "::notice::Existing PR #${NUM} already open for ${{ steps.src.outputs.branch }} — leaving as-is. Close it manually if you want to regenerate."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
-          changed_md=$(awk '{print "- `" $0 "`"}' /tmp/changed-skills.txt)
-          body=$(cat <<EOF
-          One or more clud-bug baseline skills changed on agent-skills' \`main\`.
-          Bump \`BASELINE_SKILLS_REF\` in \`lib/skills.js\` to:
 
-              ${HEAD_SHA}
+      - name: Compare source vs bundled (skip if identical)
+        id: diff
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          SRC="skills/${{ inputs.skill_name }}/SKILL.md"
+          DST="clud-bug/templates/skills/baseline/${{ inputs.skill_name }}.md"
+          if [ ! -f "$DST" ]; then
+            echo "::error::Bundled copy ${DST} not found in clud-bug — the skill_name input may not be a tracked baseline."
+            exit 1
+          fi
+          if diff -q "$SRC" "$DST" >/dev/null 2>&1; then
+            # Bundled is byte-identical to source. The pin may still be stale,
+            # but the content sync would be a no-op — and the version bump
+            # would be churn. Skip; a future change to the source re-triggers.
+            echo "::notice::Source and bundled copies of ${{ inputs.skill_name }} are byte-identical — nothing to sync."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
 
-          Then sync the bundled offline-fallback copies under
-          \`templates/skills/baseline/\` from the new agent-skills HEAD,
-          test, and release a new clud-bug patch.
+      - name: Apply sync (copy + pin + version + changelog)
+        if: steps.existing.outputs.skip != 'true' && steps.diff.outputs.skip != 'true'
+        working-directory: clud-bug
+        env:
+          SHA: ${{ steps.src.outputs.sha }}
+          SHORT: ${{ steps.src.outputs.short }}
+          SKILL: ${{ inputs.skill_name }}
+        run: |
+          set -euo pipefail
+          # 1. Copy source SKILL.md into bundled location.
+          cp "../skills/${SKILL}/SKILL.md" "templates/skills/baseline/${SKILL}.md"
 
-          ## Changed skills
-          ${changed_md}
+          # 2. Bump BASELINE_SKILLS_REF in lib/skills.js. The constant is
+          #    declared as a single line:
+          #      const BASELINE_SKILLS_REF = '<40-hex-sha>';
+          #    Verify after sed that the new SHA actually landed — if the
+          #    declaration shape ever changes the regex would silently no-op.
+          sed -i.bak -E "s|^(const BASELINE_SKILLS_REF = ')[a-f0-9]{40}(';.*)$|\1${SHA}\2|" lib/skills.js
+          rm lib/skills.js.bak
+          if ! grep -q "BASELINE_SKILLS_REF = '${SHA}'" lib/skills.js; then
+            echo "::error::BASELINE_SKILLS_REF sed did not produce the expected line — check the constant declaration shape in lib/skills.js."
+            exit 1
+          fi
 
-          ## Why
-          clud-bug fetches each baseline SKILL.md from agent-skills at
-          install/update time using the SHA pin. Until the SHA bumps,
-          installed clud-bugs continue to fetch the OLDER version — the
-          bundled offline fallback is the only safety net against drift.
+          # 3. Bump patch version in package.json. Use node to avoid pulling
+          #    in jq just for this single field — clud-bug already requires
+          #    node to run.
+          NEW_VERSION="$(node -e "const p=require('./package.json'); const [maj,min,pat]=p.version.split('.').map(Number); console.log(\`\${maj}.\${min}.\${pat+1}\`)")"
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json')); p.version='${NEW_VERSION}'; fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');"
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_ENV"
 
-          ## Source change
-          https://github.com/thrillmade/agent-skills/commit/${HEAD_SHA}
+          # 4. Prepend a CHANGELOG entry under [Unreleased]. The file format
+          #    is Keep-a-Changelog; the [Unreleased] header sits at the top.
+          DATE="$(date -u +%Y-%m-%d)"
+          ENTRY_FILE="$(mktemp)"
+          cat > "$ENTRY_FILE" <<EOF
 
-          ## Auto-generated
-          Opened by \`agent-skills/.github/workflows/notify-clud-bug.yml\`.
+          ## [${NEW_VERSION}] — ${DATE}
+
+          ### Changed
+
+          - **Bundled \`${SKILL}\` SKILL.md refreshed** from \`thrillmade/agent-skills@${SHORT}\`. \`BASELINE_SKILLS_REF\` in \`lib/skills.js\` pinned to the same commit so the install-time fetch path and the bundled offline-fallback path resolve to byte-identical content. Auto-synced by \`agent-skills/.github/workflows/notify-clud-bug.yml\`.
+
           EOF
-          )
-          gh issue create \
+          # awk inserts the entry on the line after the [Unreleased] header.
+          awk -v ef="$ENTRY_FILE" '
+            /^## \[Unreleased\]/ {
+              print
+              while ((getline line < ef) > 0) print line
+              close(ef)
+              next
+            }
+            { print }
+          ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          rm "$ENTRY_FILE"
+
+      - name: Commit + push + open PR
+        if: steps.existing.outputs.skip != 'true' && steps.diff.outputs.skip != 'true'
+        working-directory: clud-bug
+        env:
+          GH_TOKEN: ${{ secrets.CLUD_BUG_NOTIFY_PAT }}
+          SHA: ${{ steps.src.outputs.sha }}
+          SHORT: ${{ steps.src.outputs.short }}
+          BRANCH: ${{ steps.src.outputs.branch }}
+          SKILL: ${{ inputs.skill_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "agent-skills-sync[bot]"
+          git config user.email "agent-skills-sync@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
+          git add -A
+          git commit -m "chore(skills): refresh bundled ${SKILL} from agent-skills@${SHORT}"
+          git push -u origin "${BRANCH}"
+
+          PR_BODY="Automated bundled-copy sync from \`thrillmade/agent-skills\`.
+
+          **Source SKILL.md:** https://github.com/thrillmade/agent-skills/blob/${SHA}/skills/${SKILL}/SKILL.md
+          **Source commit:** https://github.com/thrillmade/agent-skills/commit/${SHA}
+
+          ## Changes applied
+
+          - \`templates/skills/baseline/${SKILL}.md\` ← byte-for-byte copy of the source above.
+          - \`lib/skills.js\` — \`BASELINE_SKILLS_REF\` bumped to \`${SHA}\` so the install-time fetch from \`thrillmade/agent-skills\` and the bundled offline-fallback both resolve to identical content.
+          - \`package.json\` — patch version bump to \`${new_version}\`.
+          - \`CHANGELOG.md\` — entry under [Unreleased] documenting the refresh.
+
+          ## How this was generated
+
+          \`agent-skills/.github/workflows/notify-clud-bug.yml\` (\`workflow_dispatch\`) — invoked manually during the smoke-test phase. A future change to that workflow will add an \`on: push\` auto-trigger once the produced PRs are confirmed sane."
+
+          gh pr create \
             --repo thrillmade/clud-bug \
-            --title "agent-skills: baseline skills changed — bump BASELINE_SKILLS_REF" \
-            --label "deps,from-agent-skills" \
-            --body "$body" \
-            || echo "::warning::failed to open issue on clud-bug (likely a missing label — re-run after creating the labels, or remove --label)"
+            --base main \
+            --head "${BRANCH}" \
+            --title "chore(skills): refresh bundled ${SKILL} from agent-skills@${SHORT}" \
+            --body "${PR_BODY}"

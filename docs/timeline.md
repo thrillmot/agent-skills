@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-27** — Add review_mode: shared to all baseline-type skill frontmatters *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
 - **2026-05-27** — Add .github/dependabot.yml for github-actions ecosystem only *(chore/dependabot)* — [decisions-branches/chore__dependabot.md](decisions-branches/chore__dependabot.md)
 - **2026-05-27** — Document logmind v0.3.0 merge-driver surface in skills/logmind/SKILL.md *(docs/logmind-v0.3.0)* — [decisions-branches/docs__logmind-v0.3.0.md](decisions-branches/docs__logmind-v0.3.0.md)
 - **2026-05-26** — chore: migrate to thrillmade org + install logmind v0.3.0 + clud-bug *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
