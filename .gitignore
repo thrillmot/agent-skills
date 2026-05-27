@@ -1,0 +1,4 @@
+# >>> logmind >>>
+.logmind/cache/
+.logmind/.lock
+# <<< logmind <<<

@@ -1,0 +1,59 @@
+# logmind-template-version: v2
+name: check derived docs
+
+# Derived-file architecture (v0.2+): docs/timeline.md is a derived
+# artifact, deterministically computed from sources (per-branch logs +
+# decisions.md + archive). This workflow VERIFIES that docs/timeline.md
+# on the PR matches what `logmind timeline` would produce — same
+# pattern as Prettier/ESLint/Black checks. If stale, the build fails
+# red with a clear message and the user regenerates locally + pushes.
+#
+# Why fail-fast instead of auto-commit: GitHub deliberately blocks
+# GITHUB_TOKEN-pushed commits from triggering downstream workflows
+# (anti-recursion safety). An auto-commit approach leaves required
+# status checks stuck on "Expected — Waiting for status to be reported"
+# forever, because the new commit never gets pytest runs. Fail-fast
+# avoids this entire class of problem — no PAT, no token games.
+#
+# Replaces the v0.1.x `logmind-aggregate.yml` workflow.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-derived-docs:
+    name: check-derived-docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install logmind
+        # Version pinned to the logmind that originally ran `logmind init`
+        # in this repo, so CI behavior matches what the maintainer tested
+        # locally. Bump after running `logmind init` against a new release.
+        run: pip install "logmind==0.3.0"
+
+      - name: Verify docs/timeline.md is current
+        run: |
+          set -euo pipefail
+          if [ ! -f docs/timeline.md ]; then
+            echo "::error::docs/timeline.md is missing. Run \`logmind timeline --write docs/timeline.md\` and commit the file."
+            exit 1
+          fi
+          logmind timeline --write docs/timeline.md
+          if ! git diff --quiet docs/timeline.md; then
+            echo "::error::docs/timeline.md is stale. Run \`logmind timeline --write docs/timeline.md\` locally and commit the regenerated file."
+            git --no-pager diff docs/timeline.md | head -50
+            exit 1
+          fi
+          echo "docs/timeline.md is up to date."

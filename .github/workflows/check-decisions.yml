@@ -1,0 +1,72 @@
+# logmind-template-version: v2
+name: decision-log check
+
+# Fail PRs that introduce >20 lines of non-docs code changes without
+# updating docs/decisions.md or a docs/decisions-branches/<branch>.md file.
+# Mirrors the local `logmind check-decisions` pre-commit hook but against
+# the PR diff. Installed by `logmind init`.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-decisions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute diff vs base
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          THRESHOLD: "20"
+        run: |
+          set -euo pipefail
+
+          # Count non-docs lines added+removed
+          total=0
+          while IFS=$'\t' read -r added removed path; do
+            [ -z "$path" ] && continue
+            # Skip docs/, the .logmind config, and the agent files — those
+            # are documentation surfaces, not the code logging should track.
+            case "$path" in
+              docs/*|.logmind/*|AGENTS.md|CLAUDE.md|.cursorrules|.windsurfrules|.continuerules|.clinerules|CONVENTIONS.md|.amazonq/*|.sourcegraph/*|.zed/*|.github/copilot-instructions.md|.github/*.md|*.md)
+                continue
+                ;;
+            esac
+            # Binary diffs render added/removed as "-"; skip them.
+            [ "$added" = "-" ] && continue
+            total=$((total + added + removed))
+            # --no-renames so a src→docs rename isn't double-counted as src.
+          done < <(git diff --numstat --no-renames "$BASE_SHA...$HEAD_SHA")
+
+          # Did the PR add a decision log update?
+          decision_touched=0
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qE '^docs/decisions(\.md|-branches/.+\.md)$'; then
+            decision_touched=1
+          fi
+
+          echo "total_lines=$total" >> "$GITHUB_OUTPUT"
+          echo "decision_touched=$decision_touched" >> "$GITHUB_OUTPUT"
+          echo "Non-docs lines changed: $total (threshold: $THRESHOLD)"
+          echo "Decision log touched: $decision_touched"
+
+      - name: Enforce
+        # Gate trips when the PR exceeds THRESHOLD non-docs lines without
+        # touching a decision log. `[skip-logmind]` in the PR title bypasses
+        # the gate for one-off overrides (handled by maintainers).
+        if: steps.diff.outputs.total_lines >= fromJSON(env.THRESHOLD) && steps.diff.outputs.decision_touched == '0' && !contains(github.event.pull_request.title, '[skip-logmind]')
+        env:
+          THRESHOLD: "20"
+        run: |
+          echo "::error::This PR changes ${{ steps.diff.outputs.total_lines }} lines of non-docs code without updating docs/decisions.md or docs/decisions-branches/<branch>.md."
+          echo "::error::Log a decision with: logmind log \"summary\" -r \"reasoning\" -a \"alternative\" -i \"implication\""
+          echo "::error::Or override on a one-off basis by adding [skip-logmind] to the PR title (handled by maintainers)."
+          exit 1

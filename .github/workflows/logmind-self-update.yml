@@ -1,0 +1,127 @@
+# logmind-template-version: v4
+name: logmind self-update
+
+# Weekly check for a newer published logmind. If one exists, runs
+# `pip install --upgrade logmind && logmind init` (refresh mode — leaves
+# docs/ and .logmind/config.yml alone, refreshes stale workflow
+# templates) and opens a PR titled "logmind self-update: X.Y.Z → A.B.C".
+#
+# Reads the currently installed version from this repo's pinned
+# workflow line (`pip install "logmind==X.Y.Z"` in regen-timeline.yml,
+# shipped since logmind v0.2.1). Pre-v0.2.1 installs aren't pinned and
+# self-update will skip with a notice — re-run `logmind init` once
+# manually to upgrade past that.
+#
+# To pin to a specific logmind version and stop self-updates, add a
+# `pinVersion: "X.Y.Z"` field to `.logmind/config.yml`. The cron will
+# skip when that field is present.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * 1'   # Mondays 12:00 UTC
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Compare installed vs PyPI latest
+        id: compare
+        run: |
+          set -euo pipefail
+          # Installed version: parsed from the workflow pin line shipped
+          # since v0.2.1. If absent, skip with a clear notice.
+          REGEN_FILE=".github/workflows/regen-timeline.yml"
+          INSTALLED=""
+          if [ -f "$REGEN_FILE" ]; then
+            INSTALLED=$(grep -oE 'logmind==[0-9]+\.[0-9]+\.[0-9]+' "$REGEN_FILE" | head -1 | sed 's/logmind==//') || true
+          fi
+          if [ -z "$INSTALLED" ]; then
+            echo "::notice::Installed logmind version not detected (no pinned \`pip install\` in regen-timeline.yml). Re-run \`logmind init\` once locally to upgrade past pre-v0.2.1 installs, then self-update will work from then on."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Optional pin override from .logmind/config.yml. Parsed with
+          # grep — the field is a flat top-level scalar and the workflow
+          # runner can't be relied on to have any third-party Python
+          # library available. v0.2.7 and earlier invoked a python3
+          # one-liner that depended on a third-party YAML lib being
+          # importable; when the runner lacked it the import failed
+          # before the try block could catch it, and the surrounding
+          # `2>/dev/null || echo ""` swallowed the failure into empty
+          # pin — silently breaking opt-out.
+          PIN=""
+          if [ -f ".logmind/config.yml" ]; then
+            PIN=$(grep -E '^[[:space:]]*pinVersion:[[:space:]]*' .logmind/config.yml \
+              | head -1 \
+              | sed -E 's/^[[:space:]]*pinVersion:[[:space:]]*//; s/^["'\''](.*)["'\'']$/\1/; s/[[:space:]]*$//' \
+              || echo "")
+          fi
+
+          LATEST=$(pip index versions logmind 2>/dev/null | grep -oE 'logmind \([0-9]+\.[0-9]+\.[0-9]+\)' | head -1 | sed 's/logmind (\(.*\))/\1/') || true
+          if [ -z "$LATEST" ]; then
+            # Fallback: PyPI JSON API
+            LATEST=$(curl -fsSL https://pypi.org/pypi/logmind/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])")
+          fi
+
+          echo "installed=$INSTALLED" >> "$GITHUB_OUTPUT"
+          echo "latest=$LATEST"       >> "$GITHUB_OUTPUT"
+          echo "pin=$PIN"              >> "$GITHUB_OUTPUT"
+          echo "Installed: $INSTALLED  Latest: $LATEST  Pin: ${PIN:-(none)}"
+
+          if [ -n "$PIN" ]; then
+            echo "::notice::Pinned to $PIN via .logmind/config.yml — skipping update check."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$INSTALLED" = "$LATEST" ]; then
+            echo "Already on latest ($INSTALLED). Nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Run logmind init + open PR
+        if: steps.compare.outputs.skip == 'false'
+        env:
+          INSTALLED: ${{ steps.compare.outputs.installed }}
+          LATEST:    ${{ steps.compare.outputs.latest }}
+          GH_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="logmind/self-update-${LATEST}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          pip install --upgrade "logmind==${LATEST}"
+          # Refresh mode (v0.2.1+) rewrites stale workflow templates by
+          # `# logmind-template-version:` marker, leaves docs/ + .logmind/
+          # + agent files untouched. Idempotent.
+          logmind init --no-git --no-skill-install || logmind init
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::No file changes after logmind init — nothing to PR."
+            exit 0
+          fi
+          git commit -m "logmind self-update: ${INSTALLED} → ${LATEST}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "logmind self-update: ${INSTALLED} → ${LATEST}" \
+            --body "Automated upgrade from logmind ${INSTALLED} → ${LATEST}.
+
+          Refresh mode (v0.2.1+) only touched workflow templates whose \`# logmind-template-version:\` marker is stale; \`docs/\`, \`.logmind/config.yml\`, and agent files were left alone.
+
+          Review the diff. To stop self-updates after this, add \`pinVersion: \"${LATEST}\"\` to \`.logmind/config.yml\` before merging."
