@@ -149,6 +149,39 @@ body changed. **If `doctor` reports an `AGENTS.md` stale row, your repo's
 embedded logmind instructions are older than what the installed logmind
 would write — re-run `logmind init` to refresh in place.**
 
+## Parallel-PR merges: timeline + file-structure merge driver (v0.3.0+)
+
+Two PRs that both run `logmind log` no longer textually conflict on
+`docs/timeline.md` or `docs/file-structure.md` on rebase. v0.3.0's
+`logmind init` installs three pieces that handle this together:
+
+- **`.gitattributes` block** (idempotent, marker-bracketed) — registers
+  `merge=logmind-timeline` and `merge=logmind-file-structure` for the
+  two derived files.
+- **Per-clone `git config`** — defines the merge drivers themselves
+  (`merge.logmind-timeline.driver = 'logmind timeline --write %A'`,
+  similar for file-structure). Lives in `.git/config`, not committed
+  (git refuses to auto-run a merge driver that isn't explicitly
+  configured locally — security guard against untrusted repos). Fresh
+  clones need `logmind init` once to pick this up.
+- **`.git/hooks/post-merge`** — re-regenerates both derived files from
+  the full post-merge working tree. Belt + suspenders: the driver runs
+  per-file mid-merge before the other branch's `docs/decisions-branches/`
+  files are checked out, so its output can miss decisions; the hook
+  sweeps any incomplete regen at end-of-merge.
+
+`logmind doctor` reports three new rows for these (v0.3.0+):
+`.gitattributes (merge driver)`, `git config (merge driver)`, and
+`post-merge hook`. Missing rows are not drift — they're "not yet
+installed for this logmind version" — the next `logmind init` resolves
+them silently.
+
+The merge driver invokes `logmind file-structure --write <path>`
+(v0.3.0+), the mirror of `logmind timeline --write`. Like the timeline
+command, you should not run it by hand in the normal flow — it exists
+for the merge driver and as an escape hatch (corrupted file, externally
+modified tree).
+
 ## Upgrading: `logmind init` prints the changelog
 
 When you run `pip install --upgrade logmind && logmind init` in an
@@ -180,6 +213,9 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.2.9**: `logmind log` prints a visible `--stage` notice on every
   invocation so the actual behavior is unmissable in output.
 - **v0.2.9**: `logmind doctor` flags stale `AGENTS.md` block-version.
+- **v0.3.0**: `logmind init` registers a git merge driver for
+  `timeline.md` / `file-structure.md` so parallel-PR merges no longer
+  conflict on the derived files. Doctor gains three rows tracking it.
 
 ## Setup (one-time, per project)
 
@@ -187,7 +223,7 @@ If the project doesn't yet have logmind:
 
 ```bash
 pip install logmind
-logmind init               # scaffolds docs/, AGENTS.md, GH Actions, .gitignore block
+logmind init               # scaffolds docs/, AGENTS.md, GH Actions, .gitignore block, merge drivers + post-merge hook (v0.3.0+)
 logmind doctor             # confirm clean install
 ```
 
