@@ -1,0 +1,79 @@
+# logmind configuration
+# This file controls how logmind behaves in this project
+
+# Git integration
+git:
+  # Auto-commit the decision after `logmind log`. Stages ONLY the decision
+  # log and its companion files (file-structure.md, decisions-archive.md
+  # if rotated). Use `logmind log ... --stage all` to stage everything in
+  # the working tree (the pre-v0.1.2 behavior).
+  auto_commit: true
+
+  # Push automatically after committing. Safe with scoped staging above —
+  # unrelated working-tree changes do not piggyback on the decision commit.
+  auto_push: true
+
+  # Commit message template
+  # Available variables: {decision}
+  commit_message_template: "logmind: {decision}"
+
+# Decision management
+decisions:
+  # Maximum number of recent decisions to keep in decisions.md
+  # Older decisions are moved to decisions-archive.md
+  max_recent: 20
+
+  # Route feature-branch decisions to docs/decisions-branches/<branch>.md
+  # The default branch always writes to docs/decisions.md.
+  # Set to false to log every branch into the same file (legacy behavior).
+  branch_aware: true
+
+# File structure generation
+file_structure:
+  # Update file-structure.md on every log
+  auto_update: true
+
+  # Directories and files to ignore in tree output.
+  # logmind also reads the project's .gitignore and unions these patterns.
+  ignore_patterns:
+    # Python
+    - __pycache__
+    - .git
+    - venv
+    - .venv
+    - env
+    - .env
+    - "*.pyc"
+    - .pytest_cache
+    - .mypy_cache
+    - dist
+    - build
+    - "*.egg-info"
+    # Node / Next.js / Vercel / Turbo
+    - node_modules
+    - .next
+    - .vercel
+    - .turbo
+    - out
+    - .cache
+    - .nyc_output
+    - coverage
+    - "*.tsbuildinfo"
+    # General
+    - .DS_Store
+    - "*.log"
+
+# AI Agent configuration
+# Set to true to enable an agent, false to disable
+agents:
+  claude: true       # CLAUDE.md
+  cursor: true       # .cursorrules
+  copilot: false     # .github/copilot-instructions.md
+  windsurf: false    # .windsurfrules
+  aider: false       # CONVENTIONS.md
+  continue: false    # .continuerules
+  cody: false        # .sourcegraph/cody.json
+  zed: false         # .zed/settings.json
+  amazonq: false     # .amazonq/rules.md
+  cline: false       # .clinerules
+  codex: false       # AGENTS.md (OpenAI Codex / universal standard)

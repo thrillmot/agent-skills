@@ -1,7 +1,7 @@
 name: notify clud-bug on skill change
 
 # When a baseline skill that clud-bug pins via SHA in lib/skills.js
-# changes on main, open an issue on thrillmot/clud-bug so the
+# changes on main, open an issue on thrillmade/clud-bug so the
 # maintainer knows to bump BASELINE_SKILLS_REF + release a new
 # clud-bug version. Closes the manual-sync chore between this
 # canonical SKILL.md and clud-bug's bundled offline-fallback copy.
@@ -26,9 +26,9 @@ on:
 
 permissions:
   # GITHUB_TOKEN can create issues on this repo, but it CAN'T create
-  # issues on a different repo (thrillmot/clud-bug). The workflow
+  # issues on a different repo (thrillmade/clud-bug). The workflow
   # uses a CLUD_BUG_NOTIFY_PAT secret instead — fine-grained PAT
-  # scoped to thrillmot/clud-bug with Issues: write.
+  # scoped to thrillmade/clud-bug with Issues: write.
   contents: read
 
 jobs:
@@ -68,7 +68,7 @@ jobs:
           echo "changed_count=${#changed[@]}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${AFTER}" >> "$GITHUB_OUTPUT"
 
-      - name: Open issue on thrillmot/clud-bug
+      - name: Open issue on thrillmade/clud-bug
         if: steps.changes.outputs.changed_count != ''
         env:
           GH_TOKEN: ${{ secrets.CLUD_BUG_NOTIFY_PAT }}
@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::warning::CLUD_BUG_NOTIFY_PAT secret missing — install a fine-grained PAT scoped to thrillmot/clud-bug with Issues: write to enable this notifier."
+            echo "::warning::CLUD_BUG_NOTIFY_PAT secret missing — install a fine-grained PAT scoped to thrillmade/clud-bug with Issues: write to enable this notifier."
             exit 0
           fi
           changed_md=$(awk '{print "- `" $0 "`"}' /tmp/changed-skills.txt)
@@ -100,14 +100,14 @@ jobs:
           bundled offline fallback is the only safety net against drift.
 
           ## Source change
-          https://github.com/thrillmot/agent-skills/commit/${HEAD_SHA}
+          https://github.com/thrillmade/agent-skills/commit/${HEAD_SHA}
 
           ## Auto-generated
           Opened by \`agent-skills/.github/workflows/notify-clud-bug.yml\`.
           EOF
           )
           gh issue create \
-            --repo thrillmot/clud-bug \
+            --repo thrillmade/clud-bug \
             --title "agent-skills: baseline skills changed — bump BASELINE_SKILLS_REF" \
             --label "deps,from-agent-skills" \
             --body "$body" \

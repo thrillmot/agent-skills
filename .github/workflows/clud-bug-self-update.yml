@@ -1,0 +1,90 @@
+# clud-bug-template-version: v1
+name: Clud Bug 🐛 Self-Update
+
+# Weekly check for a newer published clud-bug. If one exists, runs
+# `clud-bug update` (which re-renders the workflow templates and refreshes
+# the bundled baseline specimens, leaving custom and skills.sh-installed
+# specimens alone), then opens a PR titled
+# "🐛 Clud Bug self-update: vX.Y.Z → vA.B.C".
+#
+# To pin to a specific clud-bug version and stop self-updates, add a
+# "pinVersion" field to .claude/skills/.clud-bug.json:
+#   { "pinVersion": "0.3.0", ... }
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * 1'   # Mondays 12:00 UTC
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Compare installed vs npm latest
+        id: compare
+        run: |
+          MANIFEST=".claude/skills/.clud-bug.json"
+          INSTALLED="(none)"
+          PIN=""
+          if [ -f "$MANIFEST" ]; then
+            INSTALLED=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$MANIFEST','utf8')).lastUpdateVersion || '(unknown)')")
+            PIN=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$MANIFEST','utf8')).pinVersion || '')")
+          fi
+          LATEST=$(npm view clud-bug version)
+          echo "installed=$INSTALLED" >> "$GITHUB_OUTPUT"
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "pin=$PIN" >> "$GITHUB_OUTPUT"
+          echo "Installed: $INSTALLED  Latest: $LATEST  Pin: ${PIN:-(none)}"
+
+          if [ -n "$PIN" ]; then
+            echo "Pinned to $PIN — skipping update check."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$INSTALLED" = "$LATEST" ]; then
+            echo "Already on latest. Nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Run clud-bug update + open PR
+        if: steps.compare.outputs.skip == 'false'
+        env:
+          INSTALLED: ${{ steps.compare.outputs.installed }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="clud-bug/self-update-${LATEST}"
+          # Use github-actions[bot]'s real identity so commits resolve to a
+          # recognizable bot in the GitHub UI. (A "clud-bug[bot]" identity
+          # would only resolve if we registered an actual GitHub App for
+          # clud-bug — out of scope today.)
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          npx -y "clud-bug@${LATEST}" update
+
+          # Note: runUpdate always stamps lastUpdate / lastUpdateVersion in
+          # the manifest, so there will always be at least one diff in this
+          # branch. We rely on `git diff` simply to detect *real* file changes
+          # outside the manifest, and let the PR open either way.
+          git add -A
+          git commit -m "🐛 Clud Bug self-update: ${INSTALLED} → ${LATEST}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "🐛 Clud Bug self-update: ${INSTALLED} → ${LATEST}" \
+            --body "Automated update from clud-bug ${INSTALLED} → ${LATEST}. Custom and skills.sh-installed specimens were left alone; only baseline specimens and the workflow templates were refreshed.
+
+Review the diff. To stay on this version permanently, add \`\"pinVersion\": \"${INSTALLED}\"\` to \`.claude/skills/.clud-bug.json\` before merging."
