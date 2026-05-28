@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-28** — clud-bug-collaboration skill update: cover v0.6.3–v0.6.11 cost-control wiring + CLUD_BUG_QUIET + new comment format *(feat/clud-bug-collab-v0.6-skill-update)* — [decisions-branches/feat__clud-bug-collab-v0.6-skill-update.md](decisions-branches/feat__clud-bug-collab-v0.6-skill-update.md)
 - **2026-05-28** — logmind skill update: cover v0.5.0–v0.5.4 features (file-structure depth-2, quiet/ok, show flags, timeline brief) *(feat/logmind-v0.5-skill-update)* — [decisions-branches/feat__logmind-v0.5-skill-update.md](decisions-branches/feat__logmind-v0.5-skill-update.md)
 - **2026-05-27** — chore: regen docs/file-structure.md (post-PR#37 staleness) *(chore/regen-fs-post-pr37)* — [decisions-branches/chore__regen-fs-post-pr37.md](decisions-branches/chore__regen-fs-post-pr37.md)
 - **2026-05-27** — Add skill-frontmatter-quality + exclude clud-bug-collaboration from this repo's clud-bug baseline *(chore/curated-clud-bug-baseline)* — [decisions-branches/chore__curated-clud-bug-baseline.md](decisions-branches/chore__curated-clud-bug-baseline.md)
