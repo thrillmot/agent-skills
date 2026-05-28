@@ -116,18 +116,55 @@ appends a one-line summary linking the PR + the per-branch file to
 Before starting non-trivial work, read in order:
 
 1. **`docs/timeline.md`** — auto-generated chronological overview across
-   every branch; start here.
+   every branch; start here. **Since v0.5.4 the on-disk format is
+   brief** (per month: header with decision count + first + last entry
+   + elision line). Use `logmind timeline --full` for the legacy
+   per-decision listing.
 2. **`docs/decisions.md`** — direct-on-main decisions in detail (20 most
    recent).
 3. **`docs/decisions-branches/<your-branch>.md`** if present — decisions
    made earlier on the same feature branch.
-4. **`docs/file-structure.md`** — current project tree.
+4. **`docs/file-structure.md`** — current project tree. **Since v0.5.0
+   the on-disk tree is capped at depth 2 by default.** For a deeper
+   view, run `logmind file-structure --max-depth N` (or
+   `logmind tree --max-depth 0` for fully unbounded).
 
 ```bash
-logmind show               # recent decisions on the current branch
-logmind show --all         # include archive
-logmind search "postgres"  # full-text across both files
+logmind show                       # recent decisions on the current branch
+logmind show --all                 # include archive
+
+# Agent-friendly views (v0.5.2+) — combinable.
+logmind show --brief               # one line per entry: "YYYY-MM-DD HH:MM — title [source]"
+logmind show --brief --limit 10    # last 10 in brief form
+logmind show --json --limit 20     # parseable JSON array
+logmind show --json --all          # JSON across main + archive sources
+
+logmind search "postgres"          # full-text across both files
 ```
+
+## Agent-invocation mode: `LOGMIND_QUIET=1` (v0.5.1+)
+
+When an agent (CI script, Claude Code session, downstream tool) runs
+logmind, the verbose progress chatter (`ℹ Default --stage all`,
+`✓ Logged decision`, sync messages) lands in the agent's context and
+burns tokens. Set `LOGMIND_QUIET=1` (or pass `--quiet` / `-q` on the
+group) to suppress progress and emit a single `ok <key-value>`
+summary line per command. Errors and warnings still print.
+
+```bash
+LOGMIND_QUIET=1 logmind log "..." -r "..."
+# → ok logged: <commit-sha> "<title>"
+
+LOGMIND_QUIET=1 logmind tree --write docs/file-structure.md
+# → ok file-structure: docs/file-structure.md (10240 bytes, depth=2)
+```
+
+`logmind show --json` always emits parseable JSON to stdout
+regardless of `--quiet` (JSON is primary output, not progress). The
+`ok` summary in JSON mode goes to stderr so pipelines like
+`logmind show --json | jq` stay clean. Internally v0.5.3 patched
+`click.secho` so red/yellow error/warning output still prints under
+`LOGMIND_QUIET=1` — only progress chatter (cyan/green) is suppressed.
 
 ## Verifying install health
 
