@@ -116,7 +116,12 @@ appends a one-line summary linking the PR + the per-branch file to
 Before starting non-trivial work, read in order:
 
 1. **`docs/timeline.md`** — auto-generated chronological overview across
-   every branch; start here.
+   every branch; start here. Since v0.5.4 this file uses a **brief
+   format by default**: each month header shows the total decision count,
+   and only the newest + oldest entry per month are listed with an
+   elision line between them (months with ≤2 decisions show every
+   entry). This is intentional — the file is much smaller than before.
+   To see every decision in full, run `logmind timeline --full`.
 2. **`docs/decisions.md`** — direct-on-main decisions in detail (20 most
    recent).
 3. **`docs/decisions-branches/<your-branch>.md`** if present — decisions
@@ -127,7 +132,32 @@ Before starting non-trivial work, read in order:
 logmind show               # recent decisions on the current branch
 logmind show --all         # include archive
 logmind search "postgres"  # full-text across both files
+logmind timeline --full    # full per-decision listing to stdout (v0.5.4+)
+logmind timeline --write docs/timeline.md --full  # write full format on disk (v0.5.4+)
 ```
+
+## `docs/timeline.md` brief format (v0.5.4+, default)
+
+The on-disk timeline now defaults to a token-frugal brief layout. Example:
+
+```
+## 2026-05 (23 decisions)
+
+- **2026-05-28** — newest title *(main)* — [docs/decisions.md](docs/decisions.md)
+- *... 21 more decisions ...*
+- **2026-05-01** — oldest title *(feat/foo)* — [link](link)
+```
+
+Months with ≤2 decisions render every entry (nothing to compress). For
+the legacy per-decision listing pass `--full`:
+
+```bash
+logmind timeline --full                              # full to stdout
+logmind timeline --write docs/timeline.md --full     # full on disk
+```
+
+Source files (`decisions.md`, `decisions-branches/*.md`,
+`decisions-archive.md`) are user-owned and untouched by this change.
 
 ## Verifying install health
 
@@ -217,6 +247,9 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.4**: `docs/timeline.md` defaults to a brief format (newest +
+  oldest per month with elision). Pass `--full` for the legacy
+  per-decision listing.
 
 ## Setup (one-time, per project)
 
@@ -245,6 +278,10 @@ logmind doctor             # confirm clean install
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
   someone touched outside logmind), not part of the normal flow.
+- **Don't be surprised that `docs/timeline.md` only shows two entries
+  per month by default (v0.5.4+).** The brief format is intentional and
+  token-frugal. Use `logmind timeline --full` if you need the complete
+  listing.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
