@@ -126,8 +126,27 @@ Before starting non-trivial work, read in order:
 ```bash
 logmind show               # recent decisions on the current branch
 logmind show --all         # include archive
+
+# Agent-friendly views (v0.5.2+)
+logmind show --brief               # one-line summary per decision: YYYY-MM-DD HH:MM — title [source]
+logmind show --limit 5             # cap to 5 most-recent entries (newest-first)
+logmind show --brief --limit 5     # quick last-5 recall (cheap context, no full prose)
+logmind show --json                # stable structured output: [{date, title, source}, ...]
+logmind show --json --limit 10 --all  # parsed access across main + archive
+
 logmind search "postgres"  # full-text across both files
 ```
+
+### `logmind show` flags at a glance (v0.5.2+)
+
+| Flag | Short | Effect |
+|------|-------|--------|
+| `--brief` | | One-line summary per decision (`YYYY-MM-DD HH:MM — title [source]`). Cheap recall; no full prose. |
+| `--limit N` | `-n N` | Cap output to N most-recent entries (newest-first). Combinable with `--brief` and `--json`. Matches `logmind aggregate --limit` convention. |
+| `--json` | | Emit a stable JSON array `[{date: ISO8601, title, source: "main"\|"archive"}, ...]` to stdout. Always emitted even under `--quiet`. |
+
+All three flags combine freely. Existing `logmind show` and `logmind show --all`
+behavior is unchanged.
 
 ## Verifying install health
 
@@ -217,6 +236,8 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.2**: `logmind show` gains `--brief`, `--limit N` / `-n N`, and
+  `--json` for agent-friendly context recall and structured output.
 
 ## Setup (one-time, per project)
 
