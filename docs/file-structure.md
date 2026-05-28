@@ -40,9 +40,11 @@ agent-skills
 │   │   ├── chore__regen-derived-docs.md
 │   │   ├── chore__regen-fs-post-pr37.md
 │   │   ├── docs__logmind-v0.3.0.md
+│   │   ├── feat__clud-bug-collab-v0.6-skill-update.md
 │   │   ├── feat__logmind-v0.5-skill-update.md
 │   │   ├── feat__notify-clud-bug-push-trigger.md
 │   │   ├── feat__skill-review-mode.md
+│   │   ├── feat__token-frugal-tooling-skill.md
 │   │   └── fix__notify-clud-bug-pipefail-grep.md
 │   ├── decisions-archive.md
 │   ├── decisions.md
@@ -67,7 +69,9 @@ agent-skills
 │   │   └── SKILL.md
 │   ├── skill-frontmatter-quality
 │   │   └── SKILL.md
-│   └── test-discipline
+│   ├── test-discipline
+│   │   └── SKILL.md
+│   └── token-frugal-tooling
 │       └── SKILL.md
 ├── .cursorrules
 ├── .gitattributes
