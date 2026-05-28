@@ -104,6 +104,38 @@ Unrelated working-tree changes stay unstaged. Use when:
 Rare for automated agents — they should be working on one task at a
 time and want the single-commit shape.
 
+## Token-frugal quiet mode (v0.5.1+)
+
+Pass `--quiet` / `-q` to the `logmind` group, or set `LOGMIND_QUIET=1`,
+to suppress progress chatter and receive exactly one `ok <key-value>`
+summary line per command. Use this in automated / agent contexts to
+reduce token consumption:
+
+```bash
+logmind --quiet log "Use Redis for session cache" -r "Low-latency reads"
+# → ok logged: a1b2c3d "Use Redis for session cache"
+
+LOGMIND_QUIET=1 logmind init
+# → ok initialized: docs/ .logmind/ workflows @v0.5.1
+
+logmind -q show
+# → ok show: docs/decisions.md (4231 bytes)
+```
+
+The `ok` confirmation line is **always emitted** on stdout even without
+`--quiet` — agents that parse stdout can rely on it unconditionally.
+Errors and warnings (`fg="red"` / `fg="yellow"`) are never suppressed by
+quiet mode.
+
+| Command | `ok` summary line |
+|---|---|
+| `logmind log "..."` | `ok logged: <sha> "<decision[:60]>"` |
+| `logmind init` | `ok initialized: docs/ .logmind/ workflows @vX.Y.Z` |
+| `logmind show` | `ok show: docs/decisions.md (N bytes[ + archive])` |
+| `logmind tree` | `ok docs/file-structure.md (N bytes, depth=N/default)` |
+| `logmind file-structure` | `ok <path-or-stdout> (N bytes, depth=N/unbounded)` |
+| `logmind timeline` | `ok timeline: <path-or-stdout> (N bytes)` |
+
 ## Branch-aware routing (automatic)
 
 On a feature branch the entry lands in
@@ -217,6 +249,9 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.1**: `--quiet`/`-q` flag and `LOGMIND_QUIET=1` env var added;
+  all commands emit a parseable `ok <key-value>` line on stdout (always,
+  even without quiet).
 
 ## Setup (one-time, per project)
 
