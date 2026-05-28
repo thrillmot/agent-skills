@@ -102,6 +102,91 @@ explaining how to set it. (For bot/fork PRs where the secret legitimately
 isn't passed, the guard posts a one-line advisory comment and exits 0
 instead of failing red.)
 
+## Reading review comments (v0.6.5+ format)
+
+Since v0.6.5, every Clud Bug summary comment leads with a stats line for
+fast triage:
+
+```
+Found: N 🔴 / N 🟡 / N 🟣
+```
+
+Three severity tiers, applied per finding via emoji prefix:
+
+- **🔴 important** — bug, security, performance, missing test coverage. In
+  strict-mode repos these fail the check.
+- **🟡 nit** — style, naming, micro-optimization. Advisory.
+- **🟣 pre-existing** — issue that pre-dates this PR. Don't fix here unless
+  the user asks; flag for a follow-up issue.
+
+Each finding follows this shape:
+
+```
+🔴 [skill-name]: One-line claim anchored to file:line.
+<details><summary>Reasoning</summary>
+
+Longer explanation with quoted evidence.
+
+</details>
+```
+
+Re-reads (other agents picking up the PR) can skip the collapsed `Reasoning`
+block when they trust the headline; expand only when chasing a finding.
+GitHub renders the `<details>` natively for human readers. **If a review
+emits zero findings**, the entire comment is just the `Found: 0 🔴 / 0 🟡 / 0 🟣`
+stats line plus the standard summary header — no per-finding bullets.
+
+## Agent-invocation mode: `CLUD_BUG_QUIET=1` (v0.6.7+)
+
+When invoking the `clud-bug` CLI from an agent session (vs interactively),
+set `CLUD_BUG_QUIET=1` or pass `--quiet` / `-q` to suppress multi-line
+progress chatter. Each command emits a single `ok <key-value>` summary line
+so the agent's context stays lean. Errors still print on stderr.
+
+```bash
+CLUD_BUG_QUIET=1 clud-bug update
+# → ok updated: @v0.6.11, N changed, M unchanged
+
+CLUD_BUG_QUIET=1 clud-bug init
+# → ok initialized: .claude/skills/ N specimens, workflow @v0.6.11
+
+CLUD_BUG_QUIET=1 clud-bug add evidence-based-review
+# → ok added: .claude/skills/evidence-based-review/SKILL.md
+```
+
+## Why reviews are cheap (cost-control wiring, v0.6.3–v0.6.11)
+
+The bot is engineered for token frugality, several layers deep:
+
+- **Prompt caching** (v0.6.3): the stable review-prompt + skill catalog +
+  AGENTS.md from base ref land in the Claude Code CLI's auto-cached system
+  layer. Cached input is billed at 10% of standard input within a 5-minute
+  window. The first review in a fresh window writes the cache (1.25×); the
+  next ones in that window read at 10%. Visible via `cache_read_input_tokens`
+  in the run's result JSON (`show_full_output: true`).
+- **Per-section byte budgets** (v0.6.4): `MAX_DIFF_BYTES=80000`,
+  `MAX_COMMENT_BYTES=20000`, `MAX_SKILL_BYTES=4000`. Caps the PR diff /
+  prior-comment / skill-content section that the bot ingests on each run.
+  When a section hits its cap, an explicit truncation marker appears and
+  the bot is instructed to request the omitted hunks if relevant.
+- **`MAX_THINKING_TOKENS=8000`** + **`--max-turns 15`** (v0.6.8): thinking
+  budget + agentic-loop ceiling. Stops runaway turn-storms.
+- **Model pin** (v0.6.11): clud-bug-review now runs on
+  `claude-sonnet-4-6`, not Opus. Per Anthropic docs: "Sonnet handles most
+  coding tasks well and costs less than Opus." ~80% per-token reduction vs
+  Opus 4.7 default.
+- **Incremental-diff on fix-push** (v0.6.10): on a re-review, the bot reads
+  only the delta since its prior pass (`git diff <prior_sha>..HEAD`),
+  identified via a `<!-- last-reviewed-sha: <sha> -->` HTML marker in the
+  prior summary comment. Force-push or rebase invalidates the ancestry
+  check and falls back to full `gh pr diff`. ~67% fewer bytes ingested
+  across a fix-push-heavy PR's lifetime.
+
+You don't need to invoke any of this — it's wired into every clud-bug
+template. Override per-repo (e.g., `MAX_DIFF_BYTES=999999`) by setting the
+env var in your consuming repo's `clud-bug-review.yml`, which is visible in
+PRs and clud-bug-reviewable.
+
 ## Updating clud-bug itself
 
 `clud-bug-self-update.yml` runs weekly (Mondays 12:00 UTC) and opens a PR

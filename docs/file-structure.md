@@ -38,7 +38,9 @@ agent-skills
 │   │   ├── chore__dependabot.md
 │   │   ├── chore__migrate-to-thrillmade.md
 │   │   ├── chore__regen-derived-docs.md
+│   │   ├── chore__regen-fs-post-pr37.md
 │   │   ├── docs__logmind-v0.3.0.md
+│   │   ├── feat__logmind-v0.5-skill-update.md
 │   │   ├── feat__notify-clud-bug-push-trigger.md
 │   │   ├── feat__skill-review-mode.md
 │   │   └── fix__notify-clud-bug-pipefail-grep.md
