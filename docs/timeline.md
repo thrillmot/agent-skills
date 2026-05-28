@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-28** — chore: clud-bug v0.5.16 → v0.6.12 (Sonnet pin, caching, budgets, brief CLI, incremental-diff, AGENTS trim, self-update YAML fix) *(chore/clud-bug-update-v0.6.12)* — [decisions-branches/chore__clud-bug-update-v0.6.12.md](decisions-branches/chore__clud-bug-update-v0.6.12.md)
 - **2026-05-28** — PR #46: regen derived docs after merge with main *(feat/token-frugal-tooling-skill)* — [decisions-branches/feat__token-frugal-tooling-skill.md](decisions-branches/feat__token-frugal-tooling-skill.md)
 - **2026-05-28** — new token-frugal-tooling meta-skill (links logmind + clud-bug-collaboration; quick-reference) *(feat/token-frugal-tooling-skill)* — [decisions-branches/feat__token-frugal-tooling-skill.md](decisions-branches/feat__token-frugal-tooling-skill.md)
 - **2026-05-28** — clud-bug-collaboration skill update: cover v0.6.3–v0.6.11 cost-control wiring + CLUD_BUG_QUIET + new comment format *(feat/clud-bug-collab-v0.6-skill-update)* — [decisions-branches/feat__clud-bug-collab-v0.6-skill-update.md](decisions-branches/feat__clud-bug-collab-v0.6-skill-update.md)

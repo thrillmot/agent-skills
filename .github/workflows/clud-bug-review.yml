@@ -80,12 +80,38 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          track_progress: true
-          claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos/:*),Bash(git show:*),Bash(cat .claude/skills/.clud-bug.json),Bash(cat .claude/skills/*/SKILL.md)"
-          prompt: |
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          # HEAD_SHA (v0.6.10+) — emitted as `<!-- last-reviewed-sha: ... -->`
+          # marker at the end of every summary comment. The next review pass
+          # reads the marker and switches `gh pr diff` (full) → `git diff
+          # <prior_sha>..HEAD` (delta) when the SHA is still in HEAD's
+          # ancestry. Fix-push reviews ingest only the new bytes.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Per-section byte budgets (v0.6.4). The system-prompt instructs
+          # Claude to cap each per-PR input fetch with `head -c`. Caching
+          # covers the stable system prefix; capping covers the variable
+          # suffix (diff, comments, skills). Override per-repo by setting
+          # these env vars in the consuming workflow if defaults don't fit.
+          MAX_DIFF_BYTES: '80000'
+          MAX_COMMENT_BYTES: '20000'
+          MAX_SKILL_BYTES: '4000'
+          # MAX_THINKING_TOKENS caps Claude Code's extended-thinking budget per
+          # turn. Anthropic docs (v0.6.8): "For simpler tasks where deep reasoning
+          # isn't needed, you can reduce costs by lowering MAX_THINKING_TOKENS=8000."
+          # PR review needs some reasoning but not unbounded; default budget is
+          # tens of thousands of tokens. 8000 is the Anthropic-recommended cap
+          # for review-shaped tasks.
+          MAX_THINKING_TOKENS: '8000'
+          # APPEND_SYSTEM_PROMPT lands inside the Claude Code CLI's auto-cached
+          # system layer (system prompt, tools, conversation history). Anthropic
+          # bills cached input tokens at 10% of standard input — within a 5-min
+          # window, the 2nd+ PR review in any consuming repo hits cache.
+          # See: src/entrypoints/run.ts in claude-code-action — `appendSystemPrompt:
+          # process.env.APPEND_SYSTEM_PROMPT` reads this var, threads it into the
+          # SDK's `systemPrompt.append`. Crucial: keep this content byte-stable
+          # across runs (no PR numbers, timestamps, SHAs) or the cache invalidates.
+          APPEND_SYSTEM_PROMPT: |
             A collection of [skills.sh](https://www.skills.sh)-compatible agent skills published by [thrillmot](https://thrillmot.com).
 
             Review this pull request for critical issues only. Focus on:
@@ -93,10 +119,75 @@ jobs:
             - Security vulnerabilities
             - Performance problems
             - Broken or missing test coverage for new code
-            
+
 
             Skip style suggestions, minor naming issues, or anything that
             doesn't affect correctness, security, or performance.
+
+            Section budgets (token-frugal review — v0.6.4+):
+            The workflow sets env vars MAX_DIFF_BYTES / MAX_COMMENT_BYTES /
+            MAX_SKILL_BYTES. When fetching content via the Bash tool, cap each
+            section with `head -c` to keep your context lean. Caching covers
+            the stable system-prompt prefix (you're reading it now) at 10% of
+            standard input cost, but variable per-PR content is NOT cached, so
+            size discipline on those fetches pays back directly.
+
+              - PR diff (incremental on fix-push — v0.6.10+):
+                On a re-review (not first pass), fetch only the delta between
+                your prior pass and HEAD instead of the full PR. The handshake
+                state lives in your PRIOR SUMMARY COMMENT as an HTML marker:
+                `<!-- last-reviewed-sha: <sha> -->`.
+
+                CRITICAL — identifying the PRIOR SUMMARY (not the progress comment):
+                `anthropics/claude-code-action` posts an in-progress
+                `[claude]: Claude Code is working…` comment BEFORE this prompt
+                runs. That comment IS authored by claude[bot] but is NOT your
+                prior summary — it has no marker. Walking "the LAST claude[bot]
+                comment" would always land on the progress comment and the
+                handshake would never fire. Instead, identify the prior summary
+                by its HEADER LINE: it begins with `## 🐛 Clud Bug review`
+                (same anchor the strict-mode gate uses for classification).
+
+                Detection in three steps:
+
+                  1. Fetch claude[bot] comments newest-first:
+                     `gh api "repos/$REPO_OWNER/$REPO_NAME/issues/$PR_NUMBER/comments?per_page=100&sort=created&direction=desc"`
+                     Walk them in order; find the FIRST whose body starts
+                     (after any `**Claude finished …**` preamble the action
+                     prepends) with `## 🐛 Clud Bug review`. THAT is your prior
+                     summary. In its body, look for `last-reviewed-sha: <sha>`.
+
+                  2. If a SHA was found, verify it's still in HEAD's ancestry:
+                     `git merge-base --is-ancestor <prior_sha> $HEAD_SHA`
+                     (exit 0 = yes, ancestry intact; non-zero = rebased/force-pushed).
+
+                  3. Branch:
+                       - Marker present AND ancestor intact (well-behaved fix-push):
+                         `git diff <prior_sha>..$HEAD_SHA | head -c "$MAX_DIFF_BYTES"`
+                       - Marker missing OR not an ancestor (first review or rebase):
+                         `gh pr diff "$PR_NUMBER" | head -c "$MAX_DIFF_BYTES"`
+
+                Default cap is 80,000 bytes — covers ~95% of real PRs unbruised.
+                If output looks truncated mid-line, request the omitted hunks via
+                `gh pr diff "$PR_NUMBER" --name-only` + a targeted re-fetch.
+
+                Edge case — span check: if a delta-review surfaces a finding that
+                might affect unchanged code outside the delta (a fix-push edits a
+                function whose callers were fine in the prior pass), do a one-time
+                `gh pr diff "$PR_NUMBER"` to confirm before flagging. The
+                incremental view is for fast re-confirmation, not for blind trust.
+
+              - Skill files: `head -c "$MAX_SKILL_BYTES" .claude/skills/<name>/SKILL.md`
+                per file (default 4,000 bytes). Baseline skills fit easily;
+                bloated user-added skills get truncated.
+
+              - PR comments: `gh api "repos/$REPO_OWNER/$REPO_NAME/issues/$PR_NUMBER/comments?per_page=20" --jq '.[] | select(.user.login != "claude[bot]")' | head -c "$MAX_COMMENT_BYTES"`
+                (default 20,000 bytes, 20 most-recent). Skips your own prior
+                comments — the FIX-PUSH FLOW handles those via reviewThreads
+                GraphQL instead.
+
+            If you genuinely cannot review safely without the elided content,
+            say so plainly in the summary comment instead of speculating.
 
             Skills are not background context — they are review rules with
             authority. Before flagging any finding, scan the loaded skills in
@@ -119,13 +210,27 @@ jobs:
 
             Before writing the review, scan each loaded skill's frontmatter
             (the first `---`-delimited block of its SKILL.md) to identify
-            its review_mode. You can read them with:
-              cat .claude/skills/*/SKILL.md
+            its review_mode. Read each one capped at MAX_SKILL_BYTES:
+              head -c "$MAX_SKILL_BYTES" .claude/skills/*/SKILL.md
 
             At the end of every review, append a single-line footer:
               Skills referenced: [skill-name-1, skill-name-2, ...]
             If you genuinely cited none, list "[none]" and explain why no
             installed skill applied to this diff.
+
+            Incremental-diff handshake (v0.6.10+) — emit the SHA marker:
+            At the very end of the summary comment (after the Skills-referenced
+            footer, on its own line), append the HTML marker that the next
+            review pass will read to decide between full-diff vs incremental:
+
+              <!-- last-reviewed-sha: $HEAD_SHA -->
+
+            (`$HEAD_SHA` is provided via the workflow env block; literal value
+            goes in the comment, not the variable name.) The marker is silent
+            to human readers (HTML comment) but load-bearing for cost: every
+            subsequent fix-push review re-fetches only the delta since this
+            SHA instead of the full PR. If you omit the marker, the next
+            review falls back to a full `gh pr diff` — correct but wasteful.
 
             Strict-mode header (opt-in): if .claude/skills/.clud-bug.json
             contains { "strictMode": true }, the comment header you post
@@ -227,6 +332,42 @@ jobs:
             open" are both 0. On follow-up reviews after a fix-push,
             "resolved from prior" should typically be positive.
 
+            Stats header (required, immediately under **This round:**):
+            Lead with ONE single-line stats header that uses severity emoji
+            so agents re-reading this comment on a future review pass can
+            triage at a glance (and skip parsing the body on the common
+            zero-findings case). Three tiers:
+
+              🔴 important — bugs / security / perf / missing test coverage
+              🟡 nit       — minor suggestions, style nits, observations
+              🟣 pre-existing — issues that pre-date this PR (not its author's
+                                fault, but worth surfacing for awareness)
+
+            Emit exactly this shape on the line immediately after **This round:**:
+
+              Found: N 🔴 / N 🟡 / N 🟣
+
+            When all three are 0 the entire substantive body is optional —
+            agents reading this header on a future re-review can stop here.
+
+            Per-finding format (severity emoji + collapsible reasoning):
+            Each finding in critical/minor/per-skill sections uses this
+            write-time-compressed format. The summary line is the load-bearing
+            claim; the long-form reasoning lives in a `<details>` block that
+            humans expand inline (GitHub renders it natively) but future agent
+            re-reads can skip token-cheaply.
+
+              🔴 [skill-name]: One-line claim (file:line).
+              <details><summary>Reasoning</summary>
+
+              Longer explanation: evidence anchors, suggested fix, edge cases.
+
+              </details>
+
+            Use 🔴 for important findings (the ones strict-mode gates on),
+            🟡 for nits, 🟣 for pre-existing issues. The severity emoji
+            makes the finding's tier scannable without parsing prose.
+
             Per-skill scan block (required, immediately under the status line):
             After the **This round:** counters, emit a "### Per-skill scan"
             section with ONE line per loaded skill — even silent ones. This
@@ -300,6 +441,22 @@ jobs:
             comment with the H2 header and "**This round:** 0 critical · …"
             status line — strict mode + the status counters need the
             comment to exist for every review pass.
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          # show_full_output: exposes cache_read_input_tokens /
+          # cache_creation_input_tokens in the run's result JSON so we can
+          # measure caching effectiveness post-rollout (per v0.6.3 plan).
+          show_full_output: true
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 15
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos/:*),Bash(git show:*),Bash(git diff:*),Bash(git merge-base:*),Bash(cat .claude/skills/.clud-bug.json),Bash(cat .claude/skills/*/SKILL.md),Bash(head:*)"
+          prompt: |
+            Review this pull request following the discipline in your
+            system prompt — every rule about skill routing, comment
+            format, the strict-mode header, the two-surface review
+            shape, and the FIX-PUSH FLOW applies.
 
       # Strict-mode gate. Fails the check when the BASE ref's manifest
       # has { "strictMode": true } AND the latest clud-bug review's first
@@ -316,6 +473,6 @@ jobs:
       # Letting the action's own failure fail the check is louder and right.
       - name: Strict mode — fail check on critical findings
         if: success()
-        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.5.16
+        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.12
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

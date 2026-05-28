@@ -23,8 +23,10 @@
       "description": "(baseline)"
     }
   ],
-  "excludedBaselines": ["clud-bug-collaboration"],
-  "lastUpdateVersion": "0.5.16",
-  "lastUpdate": "2026-05-27T01:44:59.280Z",
+  "excludedBaselines": [
+    "clud-bug-collaboration"
+  ],
+  "lastUpdateVersion": "0.6.12",
+  "lastUpdate": "2026-05-28T17:14:23.138Z",
   "strictMode": true
 }

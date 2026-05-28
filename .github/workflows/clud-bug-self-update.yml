@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
 
@@ -83,8 +83,13 @@ jobs:
           git add -A
           git commit -m "🐛 Clud Bug self-update: ${INSTALLED} → ${LATEST}"
           git push -u origin "$BRANCH"
+          # Build the PR body via printf so the embedded newlines don't break
+          # the YAML `run: |` literal-block parser. v0.6.11 and earlier put a
+          # blank line directly inside the --body string; some YAML parsers
+          # (GitHub Actions among them) ended the block scalar at that blank
+          # line and rejected the next line as an unexpected top-level value,
+          # which broke `workflow_dispatch` on every consuming repo.
+          BODY=$(printf 'Automated update from clud-bug %s → %s. Custom and skills.sh-installed specimens were left alone; only baseline specimens and the workflow templates were refreshed.\n\nReview the diff. To stay on this version permanently, add `"pinVersion": "%s"` to `.claude/skills/.clud-bug.json` before merging.' "${INSTALLED}" "${LATEST}" "${INSTALLED}")
           gh pr create \
             --title "🐛 Clud Bug self-update: ${INSTALLED} → ${LATEST}" \
-            --body "Automated update from clud-bug ${INSTALLED} → ${LATEST}. Custom and skills.sh-installed specimens were left alone; only baseline specimens and the workflow templates were refreshed.
-
-Review the diff. To stay on this version permanently, add \`\"pinVersion\": \"${INSTALLED}\"\` to \`.claude/skills/.clud-bug.json\` before merging."
+            --body "$BODY"

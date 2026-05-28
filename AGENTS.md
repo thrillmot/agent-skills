@@ -64,46 +64,21 @@ The team has likely already decided things you'd otherwise re-litigate.
 <!-- Common commands a contributor needs (build, test, lint, run). -->
 
 <!-- clud-bug-start -->
-<!-- clud-bug-block-version: v1 -->
+<!-- clud-bug-block-version: v2 -->
 ## clud-bug — Claude PR review
 
-This repository uses [clud-bug](https://cludbug.dev) to review pull requests
-automatically. Three things matter when other agents (or future-you) work
-in this repo:
+This repo uses [clud-bug](https://cludbug.dev) for automatic PR reviews.
+Full collaboration rules — fix-push flow, skill structure, comment format,
+strict-mode mechanics, workflow-edit constraint — live in the bundled
+[`clud-bug-collaboration` skill](.claude/skills/clud-bug-collaboration/SKILL.md).
+Read that skill before pushing fixes addressing prior review threads.
 
-### When you push fixes addressing prior Clud Bug review threads
+Strict mode is **on** in this repo (workflow check fails on critical findings). Toggle via `.claude/skills/.clud-bug.json`
+(read from PR **base ref**, so PRs can't disable strict-mode on themselves).
 
-The bot resolves its own prior review threads on the next pass when it can
-verify the fix in the diff. You don't need to manually resolve threads it
-opened — push the fix, wait ~2 minutes, and check the PR. If a thread it
-left isn't auto-resolved after a fix, the bot judged the issue still open;
-read its latest review comment for what it's still flagging.
+For agent invocations of the `clud-bug` CLI, prefer `CLUD_BUG_QUIET=1`
+(or pass `--quiet`) — suppresses progress chatter and emits a single
+`ok <key-value>` summary line per command.
 
-### Strict mode
-
-Strict mode is **on** in this repo (workflow check fails on critical findings). Toggle by editing `.claude/skills/.clud-bug.json`:
-
-```json
-{ "strictMode": true | false, ... }
-```
-
-The setting is read from the **base ref** of any open PR, so PRs cannot
-disable strict mode on themselves. Changes take effect on PRs opened after
-they merge to the base branch.
-
-### Where the skills live
-
-Project-aware review rules live in `.claude/skills/<name>/SKILL.md`. A
-small baseline kit ships with every install — see
-`.claude/skills/.clud-bug.json` for the current set. Add more via
-`clud-bug add <source/name>` (from skills.sh) or by dropping your own
-`.md` files there. They auto-load into the reviewer.
-
-### Editing the workflow
-
-Anthropic's `claude-code-action` refuses to run on PRs that modify its own
-workflow file. Use `clud-bug edit-workflow` to bundle workflow tweaks into
-their own isolated PR — see [README](https://github.com/thrillmade/clud-bug#when-you-edit-the-workflow).
-
-_Installed at clud-bug v0.5.16._
+_Installed at clud-bug v0.6.12._
 <!-- clud-bug-end -->
