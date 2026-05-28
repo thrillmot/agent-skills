@@ -66,7 +66,8 @@ command, and you do NOT need to run `logmind timeline --write` separately:
    `docs/decisions.md`; feature branch → `docs/decisions-branches/<branch>.md`).
 2. Archives the oldest decision if `decisions.md` exceeds `max_recent` (rotation).
 3. Regenerates `docs/file-structure.md` (default branch only — on feature
-   branches the tree snapshot diverges and would conflict).
+   branches the tree snapshot diverges and would conflict). **Since v0.5.0
+   the tree is capped at depth 2 by default** (see below).
 4. **Regenerates `docs/timeline.md` on every branch (v0.2.3+)** — the derived
    index that `check-derived-docs` CI verifies.
 5. **`git add` every change in the working tree (default since v0.2.7)** —
@@ -121,13 +122,46 @@ Before starting non-trivial work, read in order:
    recent).
 3. **`docs/decisions-branches/<your-branch>.md`** if present — decisions
    made earlier on the same feature branch.
-4. **`docs/file-structure.md`** — current project tree.
+4. **`docs/file-structure.md`** — current project tree. **Since v0.5.0
+   this file is generated at max depth 2 by default.** The footer notes
+   the truncation. If you need the full tree, run:
+   ```bash
+   logmind tree --max-depth 0
+   # or
+   logmind file-structure --max-depth 0
+   ```
 
 ```bash
 logmind show               # recent decisions on the current branch
 logmind show --all         # include archive
 logmind search "postgres"  # full-text across both files
 ```
+
+## `docs/file-structure.md` depth cap (v0.5.0+)
+
+`docs/file-structure.md` is now generated at **max depth 2** by default,
+reducing typical file sizes from ~100 KB to ~10 KB. This applies to:
+
+- `logmind log` auto-regen on the default branch.
+- `logmind init` and the post-merge hook auto-regen.
+- `logmind file-structure` and `logmind tree` CLI commands.
+
+To get the full unbounded tree explicitly:
+
+```bash
+logmind tree --max-depth 0
+logmind file-structure --max-depth 0
+```
+
+To generate at a custom depth:
+
+```bash
+logmind tree --max-depth 4
+```
+
+**Don't treat `docs/file-structure.md` as a complete directory listing
+for deep paths** — it stops at depth 2. Use `logmind tree --max-depth 0`
+or `find` / `ls` when you need to inspect deeply nested files.
 
 ## Verifying install health
 
@@ -217,6 +251,8 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.0**: `docs/file-structure.md` is generated at max depth 2 by
+  default. Use `--max-depth 0` for the full tree.
 
 ## Setup (one-time, per project)
 
@@ -245,6 +281,9 @@ logmind doctor             # confirm clean install
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
   someone touched outside logmind), not part of the normal flow.
+- **Don't rely on `docs/file-structure.md` for deep directory listings.**
+  Since v0.5.0 it is truncated at depth 2. Run `logmind tree --max-depth 0`
+  or use `find` when you need to see files nested deeper than two levels.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
