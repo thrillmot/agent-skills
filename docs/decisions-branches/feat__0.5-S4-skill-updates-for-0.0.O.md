@@ -8,3 +8,11 @@
 - 5 new sections in clud-bug-collaboration/SKILL.md (~100 lines). 1 new subsection in logmind/SKILL.md (~30 lines). Companion §4b.2 (AGENTS.md.slim.template logmind-block lead-line promotion) NOT in this PR — separate logmind PR. Total diff: small, +130 lines across 2 skill files.
 
 ---
+## 2026-05-29 16:47 - fix(0.5 §4): correct API-endpoint distinction in bot-identity section (PR #55 review)
+
+**Reasoning:** Reviewer caught a factual error: I described repos/.../issues/N/comments as returning inline findings, then showed a 'WRONG' filter on that endpoint that supposedly dropped them. But issues/N/comments returns only ISSUE-LEVEL comments (the summary H2 thread) — inline findings live in pulls/N/comments / GraphQL reviewThreads. The 'WRONG' example dropped nothing because nothing was there to drop. Replaced with the correct two-endpoint distinction + the GraphQL reviewThreads pointer for the resolution flow.
+
+**Implications:**
+- Skill section now reflects reality. Agents grepping 'what did the bot say already?' need to read BOTH endpoints; this is now explicit. Pin pre-existing inline-finding examples still work because they're keyed by login, not endpoint.
+
+---

@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (25 decisions)
+## 2026-05 (26 decisions)
 
-- **2026-05-29** — Update clud-bug-collaboration + logmind skills for Phase 0.5 / 0.0.O (§4) *(feat/0.5-S4-skill-updates-for-0.0.O)* — [decisions-branches/feat__0.5-S4-skill-updates-for-0.0.O.md](decisions-branches/feat__0.5-S4-skill-updates-for-0.0.O.md)
-- *... 23 more decisions ...*
+- **2026-05-29** — fix(0.5 §4): correct API-endpoint distinction in bot-identity section (PR #55 review) *(feat/0.5-S4-skill-updates-for-0.0.O)* — [decisions-branches/feat__0.5-S4-skill-updates-for-0.0.O.md](decisions-branches/feat__0.5-S4-skill-updates-for-0.0.O.md)
+- *... 24 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)

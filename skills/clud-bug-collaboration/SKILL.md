@@ -117,21 +117,38 @@ which matters when you grep / filter prior comments:
   post-step uses the workflow's own `GITHUB_TOKEN`, which posts under
   `github-actions[bot]`.
 
-When you scan prior comments to decide what was already said, your
-filter must accept BOTH logins. Example incremental-diff handshake:
+When you scan prior comments to decide what was already said, two
+endpoints carry distinct comment types — and within each, you may
+encounter either bot identity:
 
 ```bash
-# CORRECT — accept both identities
+# Issue-level / summary thread (the H2 review-summary comment lives
+# here, authored by github-actions[bot]). Agents posting follow-ups
+# at the issue level also show up here.
 gh api "repos/$REPO/issues/$PR/comments" --jq '
   [.[] | select(.user.login == "github-actions[bot]" or .user.login == "claude[bot]")]
   | sort_by(.created_at)
 '
 
-# WRONG — drops every inline finding ever posted
-gh api "repos/$REPO/issues/$PR/comments" --jq '
-  [.[] | select(.user.login == "github-actions[bot]")]
+# Inline review threads (each 🔴 / 🟡 finding lives here, authored by
+# claude[bot] via the MCP tool). This endpoint never contains the
+# summary comment; that's issue-level.
+gh api "repos/$REPO/pulls/$PR/comments" --jq '
+  [.[] | select(.user.login == "claude[bot]")]
+  | sort_by(.created_at)
 '
+
+# GraphQL reviewThreads — same inline data as `pulls/$PR/comments`
+# but grouped into threads, and exposes `isResolved`. Use this when
+# you need to resolve threads programmatically after a fix.
+gh api graphql -f query='{ repository(...) { pullRequest(...) { reviewThreads(...) { ... } } } }'
 ```
+
+Pitfall: don't conflate the two endpoints. `issues/$PR/comments`
+never returns inline findings (they aren't issue-level comments);
+`pulls/$PR/comments` never returns the H2 summary (it's issue-level,
+not anchored to a diff line). A complete picture of "what did the
+bot say already?" reads both.
 
 ## Structured output schema (v0.6.22+ / 0.0.O)
 
