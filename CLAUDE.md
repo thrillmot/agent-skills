@@ -11,7 +11,7 @@ the decision-logging requirement (logmind) and required reading.
 This repo uses [clud-bug](https://cludbug.dev) for automatic PR reviews.
 Full collaboration rules — fix-push flow, skill structure, comment format,
 strict-mode mechanics, workflow-edit constraint — live in the bundled
-[`clud-bug-collaboration` skill](.claude/skills/clud-bug-collaboration/SKILL.md).
+[`clud-bug-collaboration` skill](skills/clud-bug-collaboration/SKILL.md).
 Read that skill before pushing fixes addressing prior review threads.
 
 Strict mode is **on** in this repo (workflow check fails on critical findings). Toggle via `.claude/skills/.clud-bug.json`
