@@ -6,7 +6,105 @@ on:
     types: [opened, synchronize]
 
 jobs:
+  # Pre-flight: classify the PR diff to decide (a) whether to skip the
+  # LLM review entirely, and (b) which model to route to.
+  #
+  # (a) Workflow-only PRs (v0.6.14 / 0.0.W): if every changed file
+  # matches `.github/workflows/clud-bug-*.yml` or
+  # `.github/actions/strict-mode-gate/**`, the LLM call is skipped
+  # entirely — claude-code-action would refuse anyway (self-modification
+  # guard), and template re-renders have no useful review surface.
+  # Skipping converts what were admin-bypass merges into normal ones.
+  #
+  # (b) Trivial PRs (v0.6.15 / 0.0.R): if the PR author is a dep-bumping
+  # bot (dependabot, renovate) OR the diff is small (<2KB) AND only
+  # touches dependency-manifest files, route the review to Haiku
+  # ($0.80/MTok input vs Sonnet's $3) — another ~75% cost reduction on
+  # this PR class. Sonnet remains the default for everything else.
+  paths-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      is_workflow_only: ${{ steps.classify.outputs.is_workflow_only }}
+      model: ${{ steps.classify.outputs.model }}
+    steps:
+      - name: Classify PR diff
+        id: classify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          CHANGED=$(gh pr diff "$PR_NUMBER" -R "$REPO" --name-only)
+          MODEL=claude-sonnet-4-6   # default
+          if [ -z "$CHANGED" ]; then
+            echo "is_workflow_only=false" >> "$GITHUB_OUTPUT"
+            echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --- (a) workflow-only classifier ---
+          IS_WORKFLOW_ONLY=true
+          while IFS= read -r f; do
+            case "$f" in
+              .github/workflows/clud-bug-*.yml) ;;
+              .github/actions/strict-mode-gate/*) ;;
+              *) IS_WORKFLOW_ONLY=false; break ;;
+            esac
+          done <<< "$CHANGED"
+          echo "is_workflow_only=$IS_WORKFLOW_ONLY" >> "$GITHUB_OUTPUT"
+          if [ "$IS_WORKFLOW_ONLY" = "true" ]; then
+            echo "::notice title=Clud Bug 🐛::Skipping LLM review — PR only touches workflow files."
+            echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --- (b) triviality classifier ---
+          IS_TRIVIAL=false
+          # Bot authors that exclusively open dep-bump PRs go straight
+          # to Haiku regardless of diff size — lockfile churn can be huge
+          # but the review surface is shallow.
+          case "$PR_AUTHOR" in
+            dependabot\[bot\]|renovate\[bot\]) IS_TRIVIAL=true ;;
+          esac
+          # Otherwise: diff < 2KB AND every file matches the dep-manifest
+          # allow-list. Manual lockfile fixes / small version pins
+          # qualify; real feature work does not.
+          if [ "$IS_TRIVIAL" = "false" ]; then
+            DIFF_SIZE=$(gh pr diff "$PR_NUMBER" -R "$REPO" | wc -c | tr -d ' ')
+            if [ "$DIFF_SIZE" -lt 2048 ]; then
+              ALL_TRIVIAL=true
+              while IFS= read -r f; do
+                case "$f" in
+                  package.json|*/package.json) ;;
+                  package-lock.json|*/package-lock.json) ;;
+                  pnpm-lock.yaml|*/pnpm-lock.yaml) ;;
+                  yarn.lock|*/yarn.lock) ;;
+                  requirements*.txt|*/requirements*.txt) ;;
+                  pyproject.toml|*/pyproject.toml) ;;
+                  poetry.lock|*/poetry.lock) ;;
+                  uv.lock|*/uv.lock) ;;
+                  Gemfile|*/Gemfile|Gemfile.lock|*/Gemfile.lock) ;;
+                  go.mod|*/go.mod|go.sum|*/go.sum) ;;
+                  Cargo.toml|*/Cargo.toml|Cargo.lock|*/Cargo.lock) ;;
+                  *) ALL_TRIVIAL=false; break ;;
+                esac
+              done <<< "$CHANGED"
+              [ "$ALL_TRIVIAL" = "true" ] && IS_TRIVIAL=true
+            fi
+          fi
+          if [ "$IS_TRIVIAL" = "true" ]; then
+            MODEL=claude-haiku-4-5-20251001
+            echo "::notice title=Clud Bug 🐛::Trivial PR detected (dep bump / bot author) — routing to Haiku for ~75% cost reduction."
+          fi
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+
   clud-bug-review:
+    needs: paths-check
+    if: needs.paths-check.outputs.is_workflow_only != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -60,7 +158,7 @@ jobs:
             # pull_request: synchronize on a long-running Dependabot PR would
             # otherwise stack one identical comment per rebase.
             EXISTING=$(gh api "repos/${BASE_REPO}/issues/${PR_NUMBER}/comments?per_page=100" \
-              --jq '[.[] | select(.user.login == "claude[bot]" and (.body | startswith("## 🐛 Clud Bug skipped")))] | length')
+              --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("## 🐛 Clud Bug skipped")))] | length')
             if [ "${EXISTING:-0}" = "0" ]; then
               BODY=$(printf '## 🐛 Clud Bug skipped\n\nThis PR is from a %s. GitHub deliberately does not pass repository secrets to such workflows, so Clud Bug could not authenticate against Anthropic. Review the diff manually.' "$REASON")
               gh pr comment "$PR_NUMBER" --body "$BODY" || true
@@ -124,13 +222,10 @@ jobs:
             Skip style suggestions, minor naming issues, or anything that
             doesn't affect correctness, security, or performance.
 
-            Section budgets (token-frugal review — v0.6.4+):
-            The workflow sets env vars MAX_DIFF_BYTES / MAX_COMMENT_BYTES /
-            MAX_SKILL_BYTES. When fetching content via the Bash tool, cap each
-            section with `head -c` to keep your context lean. Caching covers
-            the stable system-prompt prefix (you're reading it now) at 10% of
-            standard input cost, but variable per-PR content is NOT cached, so
-            size discipline on those fetches pays back directly.
+            Section budgets (v0.6.4+):
+            Cap fetched content with `head -c` to control input cost. Workflow
+            exposes MAX_DIFF_BYTES / MAX_COMMENT_BYTES / MAX_SKILL_BYTES. The
+            cached system prefix is free at 10%; per-PR fetches are not.
 
               - PR diff (incremental on fix-push — v0.6.10+):
                 On a re-review (not first pass), fetch only the delta between
@@ -138,24 +233,24 @@ jobs:
                 state lives in your PRIOR SUMMARY COMMENT as an HTML marker:
                 `<!-- last-reviewed-sha: <sha> -->`.
 
-                CRITICAL — identifying the PRIOR SUMMARY (not the progress comment):
-                `anthropics/claude-code-action` posts an in-progress
-                `[claude]: Claude Code is working…` comment BEFORE this prompt
-                runs. That comment IS authored by claude[bot] but is NOT your
-                prior summary — it has no marker. Walking "the LAST claude[bot]
-                comment" would always land on the progress comment and the
-                handshake would never fire. Instead, identify the prior summary
-                by its HEADER LINE: it begins with `## 🐛 Clud Bug review`
-                (same anchor the strict-mode gate uses for classification).
+                Identifying the PRIOR SUMMARY (v0.6.22+ identity note):
+                From v0.6.22 (0.0.O) onward the summary is posted by a workflow
+                post-step under the `github-actions[bot]` identity, not
+                claude[bot]. Inline review threads are still claude[bot] (the
+                MCP tool routes through claude-code-action). Beware: the
+                in-progress `Claude Code is working…` comment claude-code-action
+                posts BEFORE this prompt runs is claude[bot]-authored but is NOT
+                your prior summary (no marker). Anchor on the H2 line
+                `## 🐛 Clud Bug review` — same anchor strict-mode uses.
 
                 Detection in three steps:
 
-                  1. Fetch claude[bot] comments newest-first:
+                  1. Fetch github-actions[bot] comments newest-first:
                      `gh api "repos/$REPO_OWNER/$REPO_NAME/issues/$PR_NUMBER/comments?per_page=100&sort=created&direction=desc"`
-                     Walk them in order; find the FIRST whose body starts
-                     (after any `**Claude finished …**` preamble the action
-                     prepends) with `## 🐛 Clud Bug review`. THAT is your prior
-                     summary. In its body, look for `last-reviewed-sha: <sha>`.
+                     Walk them in order; filter to author `github-actions[bot]`,
+                     and find the FIRST whose body starts with
+                     `## 🐛 Clud Bug review`. THAT is your prior summary. In
+                     its body, look for `last-reviewed-sha: <sha>`. (Pre-v0.6.22 summaries are claude[bot]-authored — if you find a recent claude[bot] comment with the H2 anchor and no newer github-actions[bot] match, treat it as the prior summary.)
 
                   2. If a SHA was found, verify it's still in HEAD's ancestry:
                      `git merge-base --is-ancestor <prior_sha> $HEAD_SHA`
@@ -171,214 +266,198 @@ jobs:
                 If output looks truncated mid-line, request the omitted hunks via
                 `gh pr diff "$PR_NUMBER" --name-only` + a targeted re-fetch.
 
-                Edge case — span check: if a delta-review surfaces a finding that
-                might affect unchanged code outside the delta (a fix-push edits a
-                function whose callers were fine in the prior pass), do a one-time
-                `gh pr diff "$PR_NUMBER"` to confirm before flagging. The
-                incremental view is for fast re-confirmation, not for blind trust.
+                Span check: if a delta-finding might affect callers outside the
+                delta, do a one-time full `gh pr diff` before flagging — the
+                incremental view is for fast re-confirmation, not blind trust.
 
               - Skill files: `head -c "$MAX_SKILL_BYTES" .claude/skills/<name>/SKILL.md`
                 per file (default 4,000 bytes). Baseline skills fit easily;
                 bloated user-added skills get truncated.
 
-              - PR comments: `gh api "repos/$REPO_OWNER/$REPO_NAME/issues/$PR_NUMBER/comments?per_page=20" --jq '.[] | select(.user.login != "claude[bot]")' | head -c "$MAX_COMMENT_BYTES"`
+              - PR comments: `gh api "repos/$REPO_OWNER/$REPO_NAME/issues/$PR_NUMBER/comments?per_page=20" --jq '.[] | select(.user.login != "claude[bot]" and .user.login != "github-actions[bot]")' | head -c "$MAX_COMMENT_BYTES"`
                 (default 20,000 bytes, 20 most-recent). Skips your own prior
                 comments — the FIX-PUSH FLOW handles those via reviewThreads
                 GraphQL instead.
 
-            If you genuinely cannot review safely without the elided content,
-            say so plainly in the summary comment instead of speculating.
+            Tee-hint on cap fire (v0.6.18, RTK-inspired):
+            When ANY `head -c "$MAX_*"` cap fires (last line cut mid-token, or
+            `wc -c` on the captured output equals the cap exactly), you MUST do
+            two things, in order:
 
-            Skills are not background context — they are review rules with
-            authority. Before flagging any finding, scan the loaded skills in
-            .claude/skills/ for relevant guidance. If a skill applies, your
-            review MUST reference it by name in the finding (e.g. "[evidence-
-            based-review]: this claim isn't anchored to a line"). Generic
-            advice that contradicts a project skill is wrong by definition.
+              1. Attempt ONE targeted re-fetch with double the cap on the specific
+                 truncated section. Example for diff: `gh pr diff "$PR_NUMBER" |
+                 head -c $((MAX_DIFF_BYTES * 2))`. For skills: re-fetch the
+                 specific `.claude/skills/<name>/SKILL.md` that hit the cap with
+                 `head -c $((MAX_SKILL_BYTES * 2))` — name the file. For
+                 comments: re-fetch with `per_page=40` AND `head -c
+                 $((MAX_COMMENT_BYTES * 2))` — doubling per_page alone is wasted
+                 work when the original truncation was byte-bound.
+
+              2. Add a `### Diagnostics` block above the Skills-referenced
+                 footer (the SHA marker still goes last on its own line —
+                 Diagnostics is not the last thing in the comment). Each line
+                 names a cap that fired, the section affected, and outcome
+                 ("recovered with 2x cap", "still truncated", "finding deferred").
+
+            Producer-side half of RTK's `force_tee_tail_hint`: never elide
+            without naming what was elided. If re-fetch still leaves you unable
+            to review safely, say so plainly instead of speculating.
+
+            Skills carry authority. Scan loaded skills in .claude/skills/ before
+            flagging any finding; if one applies, reference it by name (e.g.
+            "[evidence-based-review]: claim isn't anchored to a line"). Generic
+            advice contradicting a project skill is wrong by definition.
 
             Skill routing — shared vs dedicated:
-            Each loaded skill carries a `review_mode:` field in its YAML
-            frontmatter at .claude/skills/<name>/SKILL.md. Two values:
+            Each SKILL.md frontmatter (first `---`-delimited block) has a
+            `review_mode:` field:
+              - `shared` — bug-finding / convention / evidence. Findings bundle
+                into the standard "Critical findings" / "Minor findings" sections.
+              - `dedicated` — domain-specific (brand voice, compliance,
+                API-contract, test-discipline). Each gets its own H3 section.
+              - Missing → treat as `shared`.
 
-              - `review_mode: shared` — bug-finding / convention / evidence
-                skills. Their findings bundle into the standard "Critical
-                findings" / "Minor findings" sections.
-              - `review_mode: dedicated` — domain-specific skills (brand
-                voice, compliance, API-contract, test-discipline). Each
-                gets its own focused H3 section in the review.
-              - Missing field → treat as `shared`.
+            Skill applies_to (v0.6.21 / 0.0.K):
+            Frontmatter may also have `applies_to:` with `paths:` (glob list)
+            and/or `extensions:` (extension list). Scan each skill's frontmatter
+            first (cheap — just the `---` block). If applies_to is present and
+            the PR's changed files (from `gh pr diff --name-only`) match NONE
+            of the declared paths or extensions, SKIP that skill's body — don't
+            read it, don't reference it. Skills without applies_to load
+            unconditionally (back-compat). Net effect: a UI-scoped skill stays
+            unread on a backend-only PR.
 
-            Before writing the review, scan each loaded skill's frontmatter
-            (the first `---`-delimited block of its SKILL.md) to identify
-            its review_mode. Read each one capped at MAX_SKILL_BYTES:
-              head -c "$MAX_SKILL_BYTES" .claude/skills/*/SKILL.md
+            Read each applicable body capped: `head -c "$MAX_SKILL_BYTES" .claude/skills/<name>/SKILL.md`
 
-            At the end of every review, append a single-line footer:
+            At review end, append a single-line footer:
               Skills referenced: [skill-name-1, skill-name-2, ...]
-            If you genuinely cited none, list "[none]" and explain why no
-            installed skill applied to this diff.
+            "[none]" with reason if no installed skill applied.
+
+            Output-token budget (v0.6.16 / 0.0.X):
+            Keep total output under ~600 tokens. Per finding:
+              - One-sentence claim
+              - <details>Reasoning</details> ≤ 80 words
+              - No code quotes > 2 lines
+              - Omit reasoning that doesn't change the verdict
+            Not a hard cap (SDK doesn't expose max_tokens); brevity compounds
+            across the org on every review.
 
             Incremental-diff handshake (v0.6.10+) — emit the SHA marker:
-            At the very end of the summary comment (after the Skills-referenced
-            footer, on its own line), append the HTML marker that the next
-            review pass will read to decide between full-diff vs incremental:
+            At the very end of the summary (after the Skills-referenced footer,
+            on its own line), append:
 
               <!-- last-reviewed-sha: $HEAD_SHA -->
 
-            (`$HEAD_SHA` is provided via the workflow env block; literal value
-            goes in the comment, not the variable name.) The marker is silent
-            to human readers (HTML comment) but load-bearing for cost: every
-            subsequent fix-push review re-fetches only the delta since this
-            SHA instead of the full PR. If you omit the marker, the next
-            review falls back to a full `gh pr diff` — correct but wasteful.
+            (`$HEAD_SHA` from workflow env; literal value, not the variable
+            name.) Silent to humans (HTML comment), load-bearing for cost: every
+            subsequent fix-push re-fetches only the delta since this SHA. Omit
+            it and the next review falls back to full `gh pr diff`.
 
-            Strict-mode header (opt-in): if .claude/skills/.clud-bug.json
-            contains { "strictMode": true }, the comment header you post
-            MUST signal whether you flagged a critical issue:
-              IF you flagged any critical issue (bug, security,
-                  performance, missing test coverage):
-                  ## 🐛 Clud Bug review — critical findings
-              OTHERWISE:
-                  ## 🐛 Clud Bug review — clean
-            A post-step in this workflow greps your posted comment for
-            that header and fails the check on "critical findings." The
-            gate is deterministic on top of your judgment.
+            Strict-mode header (opt-in): if .claude/skills/.clud-bug.json has
+            `{ "strictMode": true }`, set the `status_header` schema field
+            to signal verdict:
+              - any critical issue flagged → `status_header: "critical findings"`
+                (renderer emits `## 🐛 Clud Bug review — critical findings`)
+              - otherwise → `status_header: "clean"` (renderer emits
+                `## 🐛 Clud Bug review — clean`)
+            The strict-mode gate post-step greps for "critical findings" and
+            fails the check.
 
-            If strictMode is NOT set (or absent), keep the existing
-            "## 🐛 Clud Bug review" header — strict mode is opt-in and
-            other repos use the plain header.
+            If strictMode is unset or absent, set `status_header: "bare"` —
+            the renderer emits the bare `## 🐛 Clud Bug review` (no suffix),
+            matching the v0.6.21- visible behaviour for non-strict-mode repos.
 
-            Tone: address the author conversationally. A concise field-naturalist
-            voice is welcome (you are Clud Bug, examining specimens of code) but
-            never at the cost of clarity, evidence, or the critical-issues-only
-            discipline. Don't perform the bit; let the precision speak.
+            Tone: conversational, concise field-naturalist voice (you are Clud
+            Bug examining specimens of code) — never at the cost of clarity,
+            evidence, or critical-issues-only discipline. Let precision speak.
 
             Your review lives in TWO surfaces, in this order:
 
-            1. INLINE REVIEW THREADS — one per finding, anchored to the
-               file:line cited in the finding. Use the
-               mcp__github_inline_comment__create_inline_comment MCP tool
-               for each finding (critical, minor, AND per-skill section
-               findings). The body should be the finding text itself
-               (without the leading "- " bullet). This is what creates
-               *resolvable conversations* the author can mark resolved
-               when the fix lands; branch protection's
-               required_review_thread_resolution rule gates the merge on
-               these threads — without inline review comments, the gate
-               has nothing to gate on and the loop never closes.
+            1. INLINE REVIEW THREADS — one per finding, anchored to
+               file:line via mcp__github_inline_comment__create_inline_comment
+               (critical, minor, AND per-skill findings). Body is the finding
+               text itself (no leading "- " bullet). Creates resolvable
+               conversations that branch protection's
+               required_review_thread_resolution rule gates on. Without inline
+               threads, the gate has nothing to gate on.
 
-               Pass `confirmed: true` on every call to the tool. These
-               are final review comments, not test probes. Without
-               `confirmed: true` the tool defers each call to an
-               auto-classifier that decides post-hoc whether the comment
-               is "real" — and a classifier miscategorization re-opens
-               the exact silent-no-op failure mode this prompt is
-               designed to prevent.
+               Pass `confirmed: true` on every call — these are final review
+               comments, not probes. Without it the tool defers to a post-hoc
+               classifier that can silently no-op a real finding.
 
-               Findings that genuinely don't anchor to a specific line
-               (cross-cutting observations, "missing test coverage for
-               the new endpoint as a whole", etc.) stay in the summary
-               comment only. The default should be: if you can name
-               file:line, post it inline. Only fall back to summary-only
-               when the finding spans many files or is structural.
+               Cross-cutting findings (no specific line) stay summary-only —
+               but default to inline whenever you can name file:line.
 
-            2. SUMMARY PR COMMENT — one top-level comment via
-               `gh pr comment` that contains the H2 header, status line,
-               per-skill scan block, and per-skill findings sections.
-               This is what the strict-mode gate reads (it greps the
-               H2 header for "— critical findings"). The findings
-               sections here can be brief summaries that point to the
-               inline threads above, OR include the same finding text
-               for grep-ability — your call, but the master verdict
-               header MUST appear in this comment.
+            2. SUMMARY PR COMMENT — emitted as STRUCTURED JSON via the
+               workflow's `--json-schema` flag (0.0.O / v0.6.22+). Do NOT
+               post the summary yourself via `gh pr comment` — a post-step
+               reads your structured output and renders the comment with the
+               exact format the strict-mode gate expects. Populate every
+               schema field (`status_header`, `summary_counts`,
+               `per_skill_scan`, `critical_findings`, `minor_findings`,
+               `preexisting_findings`, `skills_referenced`,
+               `last_reviewed_sha`); `dedicated_sections` and
+               `diagnostics` are optional but emit them when applicable.
+               See workflow env for the schema; the format docs below describe
+               what each field becomes after rendering.
 
-            The comment body MUST start with this exact line so the
-            project's identity is visible (the bot account will say
-            claude[bot], but the comment header brands it as Clud Bug):
+            The comment body MUST start with:
 
               ## 🐛 Clud Bug review
 
-            Immediately after the H2 header — on the next non-empty
-            line — emit a status block in this exact format:
+            (The post-step renders this H2 anchor — the strict-mode gate greps it.)
+
+            On the next non-empty line, emit:
 
               **This round:** N critical · N minor · N resolved from prior · N still open
 
-            This applies to BOTH the bare "## 🐛 Clud Bug review" header
-            and the strict-mode variants ("— critical findings" /
-            "— clean"). The status line goes on the next non-empty line
-            regardless of which header you used. Do not omit the H2
-            header variant in strict mode just to fit the status line —
-            the strict-mode gate reads the H2 line and would break.
+            Applies to all H2 variants (bare / "— critical findings" / "— clean").
+            Always include all four counters even when 0 — fixed format is
+            grep-able. Definitions:
 
-            The four counters (always include all four, even when 0 —
-            fixed format is grep-able and lets agents reading the
-            comment parse it deterministically):
-              • critical            — count of NEW critical findings
-                                      in this review (the ones strict
-                                      mode gates on)
-              • minor               — count of non-critical findings
-                                      (suggestions / nits / observations)
-              • resolved from prior — count of prior unresolved threads
-                                      YOU (claude[bot]) just resolved on
-                                      this pass via resolveReviewThread
-                                      (the loop-closing signal — this
-                                      tells the author the bot read
-                                      their fixes)
-              • still open          — count of prior unresolved threads
-                                      whose issue still stands AFTER
-                                      this pass
+              • critical            — NEW critical findings (the ones strict mode gates on)
+              • minor               — non-critical findings (nits, suggestions)
+              • resolved from prior — prior unresolved threads YOU resolved this pass
+                                      via resolveReviewThread (proves the bot read fixes)
+              • still open          — prior unresolved threads whose issue still stands
 
-            On a first-time review, "resolved from prior" and "still
-            open" are both 0. On follow-up reviews after a fix-push,
-            "resolved from prior" should typically be positive.
+            First-time reviews → 0/0 on the last two. Fix-push reviews →
+            "resolved from prior" typically positive.
 
-            Stats header (required, immediately under **This round:**):
-            Lead with ONE single-line stats header that uses severity emoji
-            so agents re-reading this comment on a future review pass can
-            triage at a glance (and skip parsing the body on the common
-            zero-findings case). Three tiers:
+            Stats header (line immediately after **This round:**):
+            ONE single-line header — emoji tiers let agents triage on re-read
+            without parsing the body:
 
               🔴 important — bugs / security / perf / missing test coverage
-              🟡 nit       — minor suggestions, style nits, observations
-              🟣 pre-existing — issues that pre-date this PR (not its author's
-                                fault, but worth surfacing for awareness)
-
-            Emit exactly this shape on the line immediately after **This round:**:
+              🟡 nit       — suggestions, style nits, observations
+              🟣 pre-existing — issues pre-dating this PR (worth surfacing)
 
               Found: N 🔴 / N 🟡 / N 🟣
 
-            When all three are 0 the entire substantive body is optional —
-            agents reading this header on a future re-review can stop here.
+            When all three are 0, the substantive body is optional.
 
             Per-finding format (severity emoji + collapsible reasoning):
-            Each finding in critical/minor/per-skill sections uses this
-            write-time-compressed format. The summary line is the load-bearing
-            claim; the long-form reasoning lives in a `<details>` block that
-            humans expand inline (GitHub renders it natively) but future agent
-            re-reads can skip token-cheaply.
+            The summary line is load-bearing; the long-form reasoning lives in
+            a `<details>` block so re-reads can skip it token-cheaply.
 
               🔴 [skill-name]: One-line claim (file:line).
               <details><summary>Reasoning</summary>
 
-              Longer explanation: evidence anchors, suggested fix, edge cases.
+              Evidence anchors, suggested fix, edge cases.
 
               </details>
 
-            Use 🔴 for important findings (the ones strict-mode gates on),
-            🟡 for nits, 🟣 for pre-existing issues. The severity emoji
-            makes the finding's tier scannable without parsing prose.
+            Tier emoji: 🔴 important (strict-mode gates these), 🟡 nit,
+            🟣 pre-existing.
 
-            Per-skill scan block (required, immediately under the status line):
-            After the **This round:** counters, emit a "### Per-skill scan"
-            section with ONE line per loaded skill — even silent ones. This
-            is the anti-dilution layer: every loaded skill must be
-            acknowledged so authors can see their skill ran, even when it
-            produced no findings.
+            Per-skill scan block (immediately under the status line):
+            Emit "### Per-skill scan" with ONE line per loaded skill — even
+            silent ones. Anti-dilution: authors see their skill ran.
 
               ### Per-skill scan
               - [<skill-name>]: <one-sentence outcome>
 
-            Examples (mix of shared + dedicated, with and without findings):
+            Examples:
               - [critical-issues-only]: scanned all paths. 2 critical findings below.
               - [evidence-based-review]: applied to all findings. ✓ all anchored.
               - [respect-existing-conventions]: scanned for pattern fights. 0 findings.
@@ -394,48 +473,38 @@ jobs:
               - Finding: button label "Click here!" violates verb-noun rule
                 (lib/ui/Button.tsx:42). Suggested: "Open settings."
 
-            Shared-mode skill findings stay in the existing combined
-            "Critical findings" / "Minor findings" buckets — they
-            cross-correlate (a logging-PII issue belongs in both the
-            critical-issues-only and pii-and-compliance lens at once), so
-            bundling preserves that signal.
+            Shared-mode skill findings stay in the combined "Critical findings"
+            / "Minor findings" buckets — cross-correlation preserves signal
+            (e.g. a logging-PII issue belongs in both critical-issues-only and
+            pii-and-compliance at once).
 
-            Post the summary via:
-              gh pr comment "$PR_NUMBER" --body "<your review>"
+            Emit the summary as structured JSON output (the workflow's
+            --json-schema captures it; a post-step renders + posts via gh pr
+            comment). Do NOT post the summary yourself.
 
-            Each inline finding is posted separately via the
-            mcp__github_inline_comment__create_inline_comment tool
-            (with `confirmed: true` per surface 1 above). Ordering
-            within the review pass that matters for counter accuracy:
-            (a) post new inline findings, (b) resolve prior threads
-            whose issue is now fixed (FIX-PUSH FLOW below — this is
-            what feeds the "resolved from prior" counter), (c) post
-            the summary comment. The summary's "still open" and
-            "resolved from prior" counters depend on the resolve-
-            mutations in step (b), not on the new posts in (a) —
-            so step (b) MUST run before the summary, but step (a)
-            and (b) can run in either order.
+            Inline findings still post via mcp__github_inline_comment__create_inline_comment
+            (with `confirmed: true`). Pass ordering: (a) post inline findings,
+            (b) resolve prior threads now fixed (FIX-PUSH FLOW below — feeds
+            "resolved_from_prior" counter in the JSON), (c) emit structured
+            summary output. Step (b) MUST complete before (c) so the counter
+            is accurate; (a)/(b) order between themselves doesn't matter.
 
             FIX-PUSH FLOW (when prior claude[bot] threads exist):
-            If you see prior claude[bot] inline review threads from
-            earlier passes, list them and resolve the ones whose issue
-            is verifiably fixed in the current diff. This is what closes
-            the loop for the author — the "resolved from prior" counter
-            in the status block proves the bot read the fixes, not just
-            re-ran a fresh review.
+            List prior claude[bot] inline threads, resolve the ones whose issue
+            is verifiably fixed in the current diff. This closes the loop —
+            "resolved from prior" proves the bot read the fixes.
 
             List threads:
 
               gh api graphql -f query='{ repository(owner: "${{ github.repository_owner }}", name: "${{ github.event.repository.name }}") { pullRequest(number: '"$PR_NUMBER"') { reviewThreads(first: 30) { nodes { id isResolved comments(first: 1) { nodes { body author { login } } } } } } } }'
 
-            For each unresolved thread you (claude[bot]) authored where
-            the issue is now addressed by the head diff:
+            For each unresolved thread YOU (claude[bot]) authored that the head
+            diff now addresses:
 
               gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<id>"}) { thread { isResolved } } }'
 
-            Only resolve threads where the fix is verifiable in the
-            diff. Leave unresolved any thread whose issue still stands —
-            those become "still open" in the status block.
+            Only resolve threads where the fix is verifiable. Unresolved-but-
+            still-standing threads become "still open" in the status block.
 
             If there are no critical findings, you still post the summary
             comment with the H2 header and "**This round:** 0 critical · …"
@@ -448,15 +517,62 @@ jobs:
           # cache_creation_input_tokens in the run's result JSON so we can
           # measure caching effectiveness post-rollout (per v0.6.3 plan).
           show_full_output: true
+          # v0.6.15 / 0.0.R: --model is dynamic. paths-check classifies
+          # the PR as trivial (Haiku) or default (Sonnet). Override
+          # per-repo by editing the rendered workflow if you want a
+          # specific model for a specific repo.
+          # v0.6.22 / 0.0.O: --json-schema captures the summary as
+          # structured output (action exposes outputs.structured_output).
+          # The model emits findings as schema fields; a post-step
+          # renders to markdown and posts. The schema is rendered into
+          # this template at `clud-bug init` time via {"type":"object","additionalProperties":false,"properties":{"status_header":{"type":"string","enum":["critical findings","clean","bare"],"description":"Strict-mode opt-in repos: `critical findings` when ANY 🔴 finding exists, otherwise `clean`. Non-strict-mode repos (the default): emit `bare` — the renderer produces a `## 🐛 Clud Bug review` H2 with no suffix, matching the v0.6.21- behaviour. Check .claude/skills/.clud-bug.json for `strictMode: true` to pick critical/clean vs bare."},"summary_counts":{"type":"object","additionalProperties":false,"properties":{"critical":{"type":"integer","minimum":0},"minor":{"type":"integer","minimum":0},"preexisting":{"type":"integer","minimum":0},"resolved_from_prior":{"type":"integer","minimum":0},"still_open":{"type":"integer","minimum":0}},"required":["critical","minor","preexisting","resolved_from_prior","still_open"]},"per_skill_scan":{"type":"array","description":"One entry per LOADED skill — even silent ones. Empty when no skills are installed.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string"},"outcome":{"type":"string","description":"One sentence describing what the skill found. Max ~15 words. Examples: \"scanned all paths. 2 critical findings below.\", \"0 findings.\", \"not applicable to this diff.\""}},"required":["skill","outcome"]}},"critical_findings":{"type":"array","description":"NEW 🔴 findings (bugs, security, perf, missing test coverage). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"minor_findings":{"type":"array","description":"NEW 🟡 findings (nits, style, observations). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"preexisting_findings":{"type":"array","description":"NEW 🟣 findings (issues that pre-date this PR). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"dedicated_sections":{"type":"array","description":"Per-dedicated-mode-skill section blocks. Each item carries the section header text and its findings.","items":{"type":"object","additionalProperties":false,"properties":{"section_name":{"type":"string","description":"Human-readable section title, e.g. \"Brand voice\"."},"skill":{"type":"string","description":"The dedicated skill name."},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}}},"required":["section_name","skill","findings"]}},"diagnostics":{"type":"array","description":"0.0.T tee-hint diagnostics. One line per `head -c` cap that fired during fetch. Empty when no truncation occurred.","items":{"type":"string"}},"skills_referenced":{"type":"array","description":"Names of every skill cited in any finding. Empty list (or [\"(none)\"]) when no skill applied.","items":{"type":"string"}},"last_reviewed_sha":{"type":"string","description":"The HEAD SHA at review time, used by the incremental-diff handshake. Set to the literal value of the workflow env var $HEAD_SHA."}},"required":["status_header","summary_counts","per_skill_scan","critical_findings","minor_findings","preexisting_findings","skills_referenced","last_reviewed_sha"]}.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model ${{ needs.paths-check.outputs.model }}
             --max-turns 15
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos/:*),Bash(git show:*),Bash(git diff:*),Bash(git merge-base:*),Bash(cat .claude/skills/.clud-bug.json),Bash(cat .claude/skills/*/SKILL.md),Bash(head:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos/:*),Bash(git show:*),Bash(git diff:*),Bash(git merge-base:*),Bash(cat .claude/skills/.clud-bug.json),Bash(cat .claude/skills/*/SKILL.md),Bash(head:*)"
+            --json-schema '{"type":"object","additionalProperties":false,"properties":{"status_header":{"type":"string","enum":["critical findings","clean","bare"],"description":"Strict-mode opt-in repos: `critical findings` when ANY 🔴 finding exists, otherwise `clean`. Non-strict-mode repos (the default): emit `bare` — the renderer produces a `## 🐛 Clud Bug review` H2 with no suffix, matching the v0.6.21- behaviour. Check .claude/skills/.clud-bug.json for `strictMode: true` to pick critical/clean vs bare."},"summary_counts":{"type":"object","additionalProperties":false,"properties":{"critical":{"type":"integer","minimum":0},"minor":{"type":"integer","minimum":0},"preexisting":{"type":"integer","minimum":0},"resolved_from_prior":{"type":"integer","minimum":0},"still_open":{"type":"integer","minimum":0}},"required":["critical","minor","preexisting","resolved_from_prior","still_open"]},"per_skill_scan":{"type":"array","description":"One entry per LOADED skill — even silent ones. Empty when no skills are installed.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string"},"outcome":{"type":"string","description":"One sentence describing what the skill found. Max ~15 words. Examples: \"scanned all paths. 2 critical findings below.\", \"0 findings.\", \"not applicable to this diff.\""}},"required":["skill","outcome"]}},"critical_findings":{"type":"array","description":"NEW 🔴 findings (bugs, security, perf, missing test coverage). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"minor_findings":{"type":"array","description":"NEW 🟡 findings (nits, style, observations). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"preexisting_findings":{"type":"array","description":"NEW 🟣 findings (issues that pre-date this PR). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"dedicated_sections":{"type":"array","description":"Per-dedicated-mode-skill section blocks. Each item carries the section header text and its findings.","items":{"type":"object","additionalProperties":false,"properties":{"section_name":{"type":"string","description":"Human-readable section title, e.g. \"Brand voice\"."},"skill":{"type":"string","description":"The dedicated skill name."},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}}},"required":["section_name","skill","findings"]}},"diagnostics":{"type":"array","description":"0.0.T tee-hint diagnostics. One line per `head -c` cap that fired during fetch. Empty when no truncation occurred.","items":{"type":"string"}},"skills_referenced":{"type":"array","description":"Names of every skill cited in any finding. Empty list (or [\"(none)\"]) when no skill applied.","items":{"type":"string"}},"last_reviewed_sha":{"type":"string","description":"The HEAD SHA at review time, used by the incremental-diff handshake. Set to the literal value of the workflow env var $HEAD_SHA."}},"required":["status_header","summary_counts","per_skill_scan","critical_findings","minor_findings","preexisting_findings","skills_referenced","last_reviewed_sha"]}'
           prompt: |
             Review this pull request following the discipline in your
             system prompt — every rule about skill routing, comment
             format, the strict-mode header, the two-surface review
             shape, and the FIX-PUSH FLOW applies.
+        id: clud-bug-review
+
+      # v0.6.22 / 0.0.O: render the structured output to the summary
+      # comment shape, post via gh pr comment. Guarded so we only run
+      # when the action returned a non-empty structured payload
+      # (max-retries hit → empty → fall through to the next step).
+      - name: Render + post structured review
+        if: success() && steps.clud-bug-review.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          STRUCTURED: ${{ steps.clud-bug-review.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.22 render --stdin)
+          gh pr comment "$PR_NUMBER" --body "$BODY"
+
+      # Fallback comment when the model couldn't produce schema-valid
+      # output after max retries (structured_output is empty). Keeps a
+      # bare H2 header so the strict-mode gate sees a comment and falls
+      # open (advisory) rather than panicking on a missing summary.
+      - name: Fallback summary (structured_output empty)
+        if: success() && steps.clud-bug-review.outputs.structured_output == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR_NUMBER" --body "## 🐛 Clud Bug review
+
+          **This round:** 0 critical · 0 minor · 0 resolved from prior · 0 still open
+
+          Found: 0 🔴 / 0 🟡 / 0 🟣
+
+          ⚠️ Structured output (\`--json-schema\`) returned empty — likely max-retries hit on schema validation. Investigate the action logs.
+
+          Skills referenced: [none]"
 
       # Strict-mode gate. Fails the check when the BASE ref's manifest
       # has { "strictMode": true } AND the latest clud-bug review's first
@@ -473,6 +589,13 @@ jobs:
       # Letting the action's own failure fail the check is louder and right.
       - name: Strict mode — fail check on critical findings
         if: success()
-        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.12
+        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.22
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # v0.6.22 / 0.0.O: the summary is now posted by the workflow
+          # post-step under the github-actions[bot] identity (was
+          # claude[bot] when claude-code-action did the posting).
+          # Without this override the gate's default (claude[bot])
+          # never matches the new summary author → strict mode falls
+          # open advisory for every install that opted in.
+          bot-login: 'github-actions[bot]'
