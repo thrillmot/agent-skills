@@ -1,19 +1,35 @@
-# logmind-template-version: v2
+# logmind-template-version: v3
 name: check derived docs
 
-# Derived-file architecture (v0.2+): docs/timeline.md is a derived
-# artifact, deterministically computed from sources (per-branch logs +
-# decisions.md + archive). This workflow VERIFIES that docs/timeline.md
-# on the PR matches what `logmind timeline` would produce — same
-# pattern as Prettier/ESLint/Black checks. If stale, the build fails
-# red with a clear message and the user regenerates locally + pushes.
+# Derived-file architecture (v0.2+): docs/timeline.md + docs/file-structure.md
+# are derived artifacts, deterministically computed from sources (per-branch
+# logs + decisions.md + archive for timeline; tree walk for file-structure).
 #
-# Why fail-fast instead of auto-commit: GitHub deliberately blocks
-# GITHUB_TOKEN-pushed commits from triggering downstream workflows
-# (anti-recursion safety). An auto-commit approach leaves required
-# status checks stuck on "Expected — Waiting for status to be reported"
-# forever, because the new commit never gets pytest runs. Fail-fast
-# avoids this entire class of problem — no PAT, no token games.
+# Two modes (v0.3.4+):
+#
+# 1. AUTO-FIX mode (preferred — happy path).
+#    Triggered when `LOGMIND_AUTO_REGEN_PAT` secret is configured on the repo
+#    (or inherited from the org). When derived docs are stale, the workflow
+#    regenerates them and pushes the fix back to the PR branch using the PAT.
+#    Downstream CI re-runs naturally (PAT-pushed commits DO trigger workflows,
+#    unlike GITHUB_TOKEN-pushed ones). Author sees one extra commit with a
+#    clear `[bot]` author; nothing else changes about their PR.
+#
+# 2. FAIL-FAST mode (fallback — when no PAT configured).
+#    Without the PAT, the workflow falls back to the v0.2 behavior: fails red
+#    with the regenerate-locally message. Required because GITHUB_TOKEN
+#    commits don't re-trigger required status checks (anti-recursion safety),
+#    so auto-commit via GITHUB_TOKEN would leave the merge gate stuck on
+#    "Expected — Waiting for status to be reported" forever.
+#
+# Forked PRs always run in fail-fast mode (can't push back to the fork's
+# head ref). Internal PRs use auto-fix when the PAT is available.
+#
+# Setup for the PAT path:
+#   1. Create a fine-grained PAT scoped to this repo with Contents: write.
+#   2. Add it as `LOGMIND_AUTO_REGEN_PAT` under
+#      Settings → Secrets and variables → Actions (or at the org level if
+#      multiple repos use logmind).
 #
 # Replaces the v0.1.x `logmind-aggregate.yml` workflow.
 
@@ -22,7 +38,8 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write   # needed for the auto-fix push when PAT is configured
+  pull-requests: read
 
 jobs:
   check-derived-docs:
@@ -31,7 +48,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # For internal PRs, check out the PR's head ref so we can push
+          # back to it. For forks, github.head_ref is set but we can't
+          # push to forks — handled below.
+          ref: ${{ github.head_ref || github.ref }}
           fetch-depth: 0
+          # Use PAT if available so the push triggers downstream checks.
+          # Falls through to GITHUB_TOKEN when absent (still allows checkout).
+          token: ${{ secrets.LOGMIND_AUTO_REGEN_PAT || secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v6
         with:
@@ -41,9 +65,9 @@ jobs:
         # Version pinned to the logmind that originally ran `logmind init`
         # in this repo, so CI behavior matches what the maintainer tested
         # locally. Bump after running `logmind init` against a new release.
-        run: pip install "logmind==0.3.3"
+        run: pip install "logmind==0.5.6"
 
-      - name: Verify docs/timeline.md is current
+      - name: Regenerate derived docs
         run: |
           set -euo pipefail
           if [ ! -f docs/timeline.md ]; then
@@ -51,9 +75,55 @@ jobs:
             exit 1
           fi
           logmind timeline --write docs/timeline.md
-          if ! git diff --quiet docs/timeline.md; then
-            echo "::error::docs/timeline.md is stale. Run \`logmind timeline --write docs/timeline.md\` locally and commit the regenerated file."
-            git --no-pager diff docs/timeline.md | head -50
+          logmind file-structure --write docs/file-structure.md
+
+      - name: Auto-fix or fail fast
+        env:
+          PAT: ${{ secrets.LOGMIND_AUTO_REGEN_PAT }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          # No diff → already current. Nothing to do.
+          if git diff --quiet docs/timeline.md docs/file-structure.md 2>/dev/null; then
+            echo "docs/timeline.md + docs/file-structure.md are up to date."
+            exit 0
+          fi
+
+          echo "Derived docs are stale on this PR."
+
+          # Forked PR — can't push back to the fork's head ref.
+          # Fall back to fail-fast (today's behaviour).
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::error title=Stale derived docs::PR is from a fork ($HEAD_REPO). Auto-fix cannot push back. Run \`logmind timeline --write docs/timeline.md && logmind file-structure --write docs/file-structure.md\` locally and commit the regenerated files."
+            git --no-pager diff docs/timeline.md docs/file-structure.md | head -80
             exit 1
           fi
-          echo "docs/timeline.md is up to date."
+
+          # No PAT configured — fail-fast mode. GITHUB_TOKEN-pushed commits
+          # don't re-trigger required checks, so auto-commit would brick
+          # the merge gate. See workflow header comment for rationale.
+          if [ -z "${PAT:-}" ]; then
+            echo "::warning title=Stale derived docs::No \`LOGMIND_AUTO_REGEN_PAT\` configured — falling back to fail-fast."
+            echo "::warning::To enable auto-fix: create a fine-grained PAT with Contents: write on this repo, add it as \`LOGMIND_AUTO_REGEN_PAT\` secret. logmind will then push regenerated derived docs back to the PR branch on stale."
+            echo "::error title=Stale derived docs::Run \`logmind timeline --write docs/timeline.md && logmind file-structure --write docs/file-structure.md\` locally and commit the regenerated files."
+            git --no-pager diff docs/timeline.md docs/file-structure.md | head -80
+            exit 1
+          fi
+
+          # Auto-fix mode: commit + push back. The checkout step above
+          # already authenticated with the PAT, so `git push` here uses
+          # the PAT credentials and the push triggers downstream CI.
+          echo "::notice title=Auto-fixing stale derived docs::Regenerating and pushing back to ${HEAD_REF}."
+          git config user.name "logmind-auto-regen[bot]"
+          git config user.email "logmind-auto-regen@users.noreply.github.com"
+          git add docs/timeline.md docs/file-structure.md
+          git commit -m "chore: regen derived docs
+
+          Auto-fix by logmind's check-derived-docs workflow (v0.3.4+).
+          The PR's docs/timeline.md or docs/file-structure.md was stale
+          after a code change. Regenerated from the per-branch decision
+          files (timeline) and current tree (file-structure)."
+          git push origin "HEAD:${HEAD_REF}"
+          echo "::notice::Derived docs regenerated and pushed. CI will re-run on the new commit."

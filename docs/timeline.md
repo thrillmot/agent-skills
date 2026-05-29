@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (23 decisions)
+## 2026-05 (24 decisions)
 
-- **2026-05-29** — Upgrade agent-skills to clud-bug v0.6.22 + logmind v0.5.6 (Phase 0.5 propagation §1) *(chore/clud-bug-v0.6.22-+-logmind-v0.5.6)* — [decisions-branches/chore__clud-bug-v0.6.22-+-logmind-v0.5.6.md](decisions-branches/chore__clud-bug-v0.6.22-+-logmind-v0.5.6.md)
-- *... 21 more decisions ...*
+- **2026-05-29** — Fix two CI failures on PR #53: bump logmind workflow pin 0.3.3 → 0.5.6 + fix SKILL.md path overwritten by clud-bug update *(chore/clud-bug-v0.6.22-+-logmind-v0.5.6)* — [decisions-branches/chore__clud-bug-v0.6.22-+-logmind-v0.5.6.md](decisions-branches/chore__clud-bug-v0.6.22-+-logmind-v0.5.6.md)
+- *... 22 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)

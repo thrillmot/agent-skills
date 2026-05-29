@@ -9,3 +9,14 @@
 - Block size saving compounds: agent-skills sessions reading AGENTS.md amortize ~1.7 KB/read across every agent run touching this repo.
 
 ---
+## 2026-05-29 14:32 - Fix two CI failures on PR #53: bump logmind workflow pin 0.3.3 → 0.5.6 + fix SKILL.md path overwritten by clud-bug update
+
+**Reasoning:** Two failures beyond the expected App-guard: (1) check-derived-docs failed because .github/workflows/regen-timeline.yml + check-doc-links.yml were pinned at logmind==0.3.3 (pre-brief-format era). CI's old logmind regenerated timeline.md in v0.3.3's verbose format and saw drift vs my locally-committed v0.5.6 brief format. Ran logmind init --no-git which is the documented refresh path (bumps the workflow's template-version marker + rewrites the install pins to current logmind). Now both workflows pip install logmind==0.5.6, matching what I produce locally. (2) check-links failed because clud-bug update --quiet overwrote AGENTS.md's clud-bug-collaboration skill reference, replacing the agent-skills-specific path 'skills/clud-bug-collaboration/SKILL.md' with the consumer-install path '.claude/skills/clud-bug-collaboration/SKILL.md'. agent-skills IS the publisher of clud-bug-collaboration, not a consumer — its copy lives at skills/, not .claude/skills/. Restored the publisher-path. Same fix as agent-skills#48 which originally caught this.
+
+**Alternatives considered:** Patch clud-bug-update to detect 'this repo is the publisher of clud-bug-collaboration' (e.g. via skills/clud-bug-collaboration/SKILL.md existing) and skip block install OR use the local path. Better long-term fix but requires a clud-bug v0.6.23 release; this PR fixes the symptom in agent-skills only., Add agent-skills' AGENTS.md to a 'do not clud-bug-update this file' list in clud-bug. Rejected: agent-skills DOES want the clud-bug-version marker bumped on AGENTS.md; just not the skill-path overwritten. Surgical exception is hard to express via skip-list.
+
+**Implications:**
+- Future clud-bug update runs in agent-skills will overwrite the SKILL.md path again. Track as a known recurring issue until clud-bug ships a publisher-aware fix. Workaround: re-apply the path patch each propagation cycle, OR add a post-update hook in agent-skills.
+- Future propagation PRs to consumer repos (NOT publishers): the consumer-install path '.claude/skills/clud-bug-collaboration/SKILL.md' is CORRECT for them — they install the skill there via skills.sh. The path-fix is publisher-specific (only agent-skills hits this).
+
+---
