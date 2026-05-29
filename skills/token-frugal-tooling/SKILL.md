@@ -69,6 +69,13 @@ On a re-read, you can usually trust the headline and skip the collapsed
 `Reasoning`. Expand only when the headline is ambiguous or you want the
 evidence trail.
 
+If you see a `### Diagnostics` block before the Skills-referenced footer
+(clud-bug v0.6.18+ / 0.0.T): a `head -c` cap fired during the review.
+The block names which section truncated and the recovery outcome (e.g.
+"recovered with 2x cap", "still truncated"). Treat it as confidence
+calibration — if a finding's section was deferred, the verdict on that
+section is partial.
+
 ## Show + search are agent-friendly (v0.5.2+)
 
 `logmind show` carries three combinable flags for fast scans:
@@ -98,6 +105,23 @@ works without extra plumbing.
   only the delta since its prior review (handshake via
   `<!-- last-reviewed-sha: <sha> -->` marker in the prior summary
   comment).
+- **Don't worry about workflow-only PRs** (clud-bug v0.6.14 / 0.0.W) —
+  PRs touching only `clud-bug-*.yml` or `strict-mode-gate/**` skip the
+  LLM review entirely. The composite-pin lock-step propagation PRs
+  that used to require admin-bypass are now normal merges.
+- **Don't worry about dep-bump PRs** (clud-bug v0.6.15 / 0.0.R) —
+  dependabot/renovate authors AND small-diff dep-manifest-only PRs
+  route to Haiku ($0.80/MTok vs Sonnet's $3) for another ~75%
+  reduction on that class.
+- **Don't worry about review output length** (clud-bug v0.6.16 / 0.0.X)
+  — the prompt has a brevity directive ("Keep total output under
+  ~600 tokens"). Per-finding 1-sentence claim + collapsible reasoning
+  is the shape; you don't need to ask for short output.
+- **Don't worry about prompt drift** (clud-bug v0.6.17 / 0.0.E) — the
+  CI golden gate (`test/golden/{must-contain,must-not-contain,byte-budget}.json`)
+  fails any PR that drops a load-bearing prompt instruction or
+  re-introduces filler patterns. The byte-budget cap is intentionally
+  low post-0.0.P (v0.6.20).
 
 ## Where to look for detail
 
