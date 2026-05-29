@@ -2,6 +2,24 @@
 name: brand-voice-review
 description: Review user-facing strings for brand-voice consistency. Catch dead phrases ("click here", "you should"), accidental shouting (exclamation marks, ALL CAPS), and jargon that leaks past the design team. Apply to button labels, error messages, marketing copy, headings — not to internal code identifiers or logs.
 review_mode: dedicated
+applies_to:
+  paths:
+    - "src/ui/**"
+    - "src/components/**"
+    - "lib/ui/**"
+    - "lib/components/**"
+    - "components/**"
+    - "app/**"
+    - "pages/**"
+    - "marketing/**"
+    - "docs/**"
+    - "README.md"
+    - "**/copy/**"
+    - "**/microcopy/**"
+    - "**/strings/**"
+    - "**/i18n/**"
+    - "**/locales/**"
+  extensions: [".tsx", ".jsx", ".vue", ".svelte", ".html", ".md", ".mdx", ".pug", ".hbs", ".liquid"]
 ---
 
 # Brand voice review

@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05
 
+- **2026-05-29** — 0.0.K companion: add applies_to to brand-voice-review, api-contract-enforcement, test-discipline *(chore/applies-to-scoped-skills)* — [decisions-branches/chore__applies-to-scoped-skills.md](decisions-branches/chore__applies-to-scoped-skills.md)
 - **2026-05-29** — Update token-frugal-tooling skill with Phase 0.5 patterns (0.0.T, 0.0.W, 0.0.R, 0.0.X, 0.0.E) *(chore/token-frugal-tooling-phase-0.5)* — [decisions-branches/chore__token-frugal-tooling-phase-0.5.md](decisions-branches/chore__token-frugal-tooling-phase-0.5.md)
 - **2026-05-29** — chore: add @AGENTS.md import to CLAUDE.md (Q4 refinement / 0.0.I) *(chore/agents-md-import)* — [decisions-branches/chore__agents-md-import.md](decisions-branches/chore__agents-md-import.md)
 - **2026-05-28** — chore: clud-bug v0.5.16 → v0.6.12 (Sonnet pin, caching, budgets, brief CLI, incremental-diff, AGENTS trim, self-update YAML fix) *(chore/clud-bug-update-v0.6.12)* — [decisions-branches/chore__clud-bug-update-v0.6.12.md](decisions-branches/chore__clud-bug-update-v0.6.12.md)

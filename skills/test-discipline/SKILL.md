@@ -2,6 +2,17 @@
 name: test-discipline
 description: Review test changes for the patterns that hollow out a test suite over time — overly-mocked tests, snapshot churn, asserting on the implementation, deleted tests without replacement, skipped tests left in the diff, and "fix the test to match the new behavior" without thinking about whether the old assertion was load-bearing. Apply to any PR that adds, deletes, or modifies test files.
 review_mode: dedicated
+applies_to:
+  paths:
+    - "test/**"
+    - "tests/**"
+    - "spec/**"
+    - "specs/**"
+    - "**/__tests__/**"
+    - "**/__test__/**"
+    - "e2e/**"
+    - "integration/**"
+  extensions: [".test.ts", ".test.tsx", ".test.js", ".test.jsx", ".test.py", ".test.go", ".test.rb", ".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx", "_test.py", "_test.go", "_spec.rb"]
 ---
 
 # Test discipline

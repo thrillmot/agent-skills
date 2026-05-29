@@ -2,6 +2,24 @@
 name: api-contract-enforcement
 description: Flag PRs that change the shape, semantics, or error behavior of a public API without versioning, deprecation, or migration notes. Catches removed fields, renamed parameters, changed status codes, broken pagination, and silent enum drift. Apply when reviewing HTTP routes, gRPC services, GraphQL schemas, SDK exports, CLI flags, or any other interface a downstream consumer depends on.
 review_mode: dedicated
+applies_to:
+  paths:
+    - "api/**"
+    - "src/api/**"
+    - "lib/api/**"
+    - "internal/api/**"
+    - "**/routes/**"
+    - "**/handlers/**"
+    - "**/controllers/**"
+    - "**/endpoints/**"
+    - "**/resolvers/**"
+    - "src/index.ts"
+    - "src/index.js"
+    - "src/__init__.py"
+    - "openapi/**"
+    - "schema/**"
+    - "schemas/**"
+  extensions: [".proto", ".graphql", ".graphqls", ".gql", ".thrift"]
 ---
 
 # API contract enforcement

@@ -41,6 +41,7 @@ agent-skills
 │   │   ├── chore__migrate-to-thrillmade.md
 │   │   ├── chore__regen-derived-docs.md
 │   │   ├── chore__regen-fs-post-pr37.md
+│   │   ├── chore__token-frugal-tooling-phase-0.5.md
 │   │   ├── docs__logmind-v0.3.0.md
 │   │   ├── feat__clud-bug-collab-v0.6-skill-update.md
 │   │   ├── feat__logmind-v0.5-skill-update.md
