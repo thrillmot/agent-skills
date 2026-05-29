@@ -29,6 +29,7 @@ jobs:
     outputs:
       is_workflow_only: ${{ steps.classify.outputs.is_workflow_only }}
       model: ${{ steps.classify.outputs.model }}
+      max_turns: ${{ steps.classify.outputs.max_turns }}
     steps:
       - name: Classify PR diff
         id: classify
@@ -43,6 +44,13 @@ jobs:
           if [ -z "$CHANGED" ]; then
             echo "is_workflow_only=false" >> "$GITHUB_OUTPUT"
             echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+            # v0.6.23 / §5: max_turns must always be emitted because
+            # clud-bug-review runs (is_workflow_only=false). Without
+            # this, --max-turns ${{ ... }} expands to '--max-turns '
+            # (empty), failing the CLI invocation. Empty-CHANGED
+            # fires on gh pr diff auth/network failures + the
+            # (theoretical) no-changed-files PR.
+            echo "max_turns=15" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -102,6 +110,38 @@ jobs:
           fi
           echo "model=$MODEL" >> "$GITHUB_OUTPUT"
 
+          # --- (c) adaptive max-turns (v0.6.23 / §5) ---
+          # Scope-based turn budget so large PRs (many files OR many prior
+          # unresolved threads to walk in FIX-PUSH FLOW) don't exhaust the
+          # default 15-turn budget. Concrete failure that motivated this:
+          # tokenomics PR #18 (23 docs files + 6 prior claude[bot] threads)
+          # exhausted the cap under v0.6.12 AND under v0.6.22's
+          # structured-output flow.
+          #
+          # Buckets:
+          #   Trivial (Haiku) → 10
+          #   Standard (<10 files AND <3 prior threads) → 15 (current default)
+          #   Larger (≥10 files OR ≥3 prior threads) → 25
+          #   Very large (≥30 files OR ≥6 prior threads) → 40
+          MAX_TURNS=15
+          if [ "$IS_TRIVIAL" = "true" ]; then
+            MAX_TURNS=10
+          else
+            FILE_COUNT=$(echo "$CHANGED" | wc -l | tr -d ' ')
+            # Count unresolved claude-bot threads. Best-effort: rate-limit
+            # or auth failures default to 0 (no escalation, fall back to
+            # file-count tier).
+            THREAD_COUNT=$(gh api graphql -f query='{repository(owner:"'"$(echo "$REPO" | cut -d/ -f1)"'",name:"'"$(echo "$REPO" | cut -d/ -f2)"'"){pullRequest(number:'"$PR_NUMBER"'){reviewThreads(first:50){nodes{isResolved comments(first:1){nodes{author{login}}}}}}}}' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false and (.comments.nodes[0].author.login == "claude" or .comments.nodes[0].author.login == "claude[bot]"))] | length' 2>/dev/null || echo 0)
+            THREAD_COUNT=${THREAD_COUNT:-0}
+            if [ "$FILE_COUNT" -ge 30 ] || [ "$THREAD_COUNT" -ge 6 ]; then
+              MAX_TURNS=40
+            elif [ "$FILE_COUNT" -ge 10 ] || [ "$THREAD_COUNT" -ge 3 ]; then
+              MAX_TURNS=25
+            fi
+            echo "::notice title=Clud Bug 🐛::Turn budget: $MAX_TURNS ($FILE_COUNT files, $THREAD_COUNT prior unresolved claude threads)."
+          fi
+          echo "max_turns=$MAX_TURNS" >> "$GITHUB_OUTPUT"
+
   clud-bug-review:
     needs: paths-check
     if: needs.paths-check.outputs.is_workflow_only != 'true'
@@ -114,6 +154,11 @@ jobs:
       # the GitHub Checks API for any skill in .clud-bug.json's strictSkills
       # list (BB.3, v0.5.10+). No-op when strictSkills is unset.
       checks: write
+      # actions: read (v0.6.23 / §5) — claude-code-action's bundled
+      # github_ci MCP server needs this to introspect recent CI runs.
+      # Per-job GITHUB_TOKEN permissions aren't inherited, so this
+      # MUST be on the clud-bug-review job, not paths-check.
+      actions: read
 
     steps:
       - uses: actions/checkout@v6
@@ -528,7 +573,7 @@ jobs:
           # this template at `clud-bug init` time via {"type":"object","additionalProperties":false,"properties":{"status_header":{"type":"string","enum":["critical findings","clean","bare"],"description":"Strict-mode opt-in repos: `critical findings` when ANY 🔴 finding exists, otherwise `clean`. Non-strict-mode repos (the default): emit `bare` — the renderer produces a `## 🐛 Clud Bug review` H2 with no suffix, matching the v0.6.21- behaviour. Check .claude/skills/.clud-bug.json for `strictMode: true` to pick critical/clean vs bare."},"summary_counts":{"type":"object","additionalProperties":false,"properties":{"critical":{"type":"integer","minimum":0},"minor":{"type":"integer","minimum":0},"preexisting":{"type":"integer","minimum":0},"resolved_from_prior":{"type":"integer","minimum":0},"still_open":{"type":"integer","minimum":0}},"required":["critical","minor","preexisting","resolved_from_prior","still_open"]},"per_skill_scan":{"type":"array","description":"One entry per LOADED skill — even silent ones. Empty when no skills are installed.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string"},"outcome":{"type":"string","description":"One sentence describing what the skill found. Max ~15 words. Examples: \"scanned all paths. 2 critical findings below.\", \"0 findings.\", \"not applicable to this diff.\""}},"required":["skill","outcome"]}},"critical_findings":{"type":"array","description":"NEW 🔴 findings (bugs, security, perf, missing test coverage). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"minor_findings":{"type":"array","description":"NEW 🟡 findings (nits, style, observations). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"preexisting_findings":{"type":"array","description":"NEW 🟣 findings (issues that pre-date this PR). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"dedicated_sections":{"type":"array","description":"Per-dedicated-mode-skill section blocks. Each item carries the section header text and its findings.","items":{"type":"object","additionalProperties":false,"properties":{"section_name":{"type":"string","description":"Human-readable section title, e.g. \"Brand voice\"."},"skill":{"type":"string","description":"The dedicated skill name."},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}}},"required":["section_name","skill","findings"]}},"diagnostics":{"type":"array","description":"0.0.T tee-hint diagnostics. One line per `head -c` cap that fired during fetch. Empty when no truncation occurred.","items":{"type":"string"}},"skills_referenced":{"type":"array","description":"Names of every skill cited in any finding. Empty list (or [\"(none)\"]) when no skill applied.","items":{"type":"string"}},"last_reviewed_sha":{"type":"string","description":"The HEAD SHA at review time, used by the incremental-diff handshake. Set to the literal value of the workflow env var $HEAD_SHA."}},"required":["status_header","summary_counts","per_skill_scan","critical_findings","minor_findings","preexisting_findings","skills_referenced","last_reviewed_sha"]}.
           claude_args: |
             --model ${{ needs.paths-check.outputs.model }}
-            --max-turns 15
+            --max-turns ${{ needs.paths-check.outputs.max_turns }}
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos/:*),Bash(git show:*),Bash(git diff:*),Bash(git merge-base:*),Bash(cat .claude/skills/.clud-bug.json),Bash(cat .claude/skills/*/SKILL.md),Bash(head:*)"
             --json-schema '{"type":"object","additionalProperties":false,"properties":{"status_header":{"type":"string","enum":["critical findings","clean","bare"],"description":"Strict-mode opt-in repos: `critical findings` when ANY 🔴 finding exists, otherwise `clean`. Non-strict-mode repos (the default): emit `bare` — the renderer produces a `## 🐛 Clud Bug review` H2 with no suffix, matching the v0.6.21- behaviour. Check .claude/skills/.clud-bug.json for `strictMode: true` to pick critical/clean vs bare."},"summary_counts":{"type":"object","additionalProperties":false,"properties":{"critical":{"type":"integer","minimum":0},"minor":{"type":"integer","minimum":0},"preexisting":{"type":"integer","minimum":0},"resolved_from_prior":{"type":"integer","minimum":0},"still_open":{"type":"integer","minimum":0}},"required":["critical","minor","preexisting","resolved_from_prior","still_open"]},"per_skill_scan":{"type":"array","description":"One entry per LOADED skill — even silent ones. Empty when no skills are installed.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string"},"outcome":{"type":"string","description":"One sentence describing what the skill found. Max ~15 words. Examples: \"scanned all paths. 2 critical findings below.\", \"0 findings.\", \"not applicable to this diff.\""}},"required":["skill","outcome"]}},"critical_findings":{"type":"array","description":"NEW 🔴 findings (bugs, security, perf, missing test coverage). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"minor_findings":{"type":"array","description":"NEW 🟡 findings (nits, style, observations). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"preexisting_findings":{"type":"array","description":"NEW 🟣 findings (issues that pre-date this PR). May be empty.","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}},"dedicated_sections":{"type":"array","description":"Per-dedicated-mode-skill section blocks. Each item carries the section header text and its findings.","items":{"type":"object","additionalProperties":false,"properties":{"section_name":{"type":"string","description":"Human-readable section title, e.g. \"Brand voice\"."},"skill":{"type":"string","description":"The dedicated skill name."},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"skill":{"type":"string","description":"The skill name in brackets, e.g. \"critical-issues-only\". Must match a loaded skill or \"(none)\"."},"file":{"type":"string","description":"Path of the affected file relative to repo root. Optional when the finding is cross-cutting."},"line":{"type":"integer","minimum":1,"description":"Line number in the affected file. Required when `file` is set."},"summary":{"type":"string","description":"One sentence stating the claim. Max ~20 words; no trailing period (the renderer adds one)."},"reasoning":{"type":"string","description":"Evidence anchor + suggested fix. Max ~80 words. Rendered inside <details> block; can be omitted for self-evident findings."}},"required":["skill","summary"]}}},"required":["section_name","skill","findings"]}},"diagnostics":{"type":"array","description":"0.0.T tee-hint diagnostics. One line per `head -c` cap that fired during fetch. Empty when no truncation occurred.","items":{"type":"string"}},"skills_referenced":{"type":"array","description":"Names of every skill cited in any finding. Empty list (or [\"(none)\"]) when no skill applied.","items":{"type":"string"}},"last_reviewed_sha":{"type":"string","description":"The HEAD SHA at review time, used by the incremental-diff handshake. Set to the literal value of the workflow env var $HEAD_SHA."}},"required":["status_header","summary_counts","per_skill_scan","critical_findings","minor_findings","preexisting_findings","skills_referenced","last_reviewed_sha"]}'
           prompt: |
@@ -550,7 +595,7 @@ jobs:
           STRUCTURED: ${{ steps.clud-bug-review.outputs.structured_output }}
         run: |
           set -euo pipefail
-          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.22 render --stdin)
+          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.23 render --stdin)
           gh pr comment "$PR_NUMBER" --body "$BODY"
 
       # Fallback comment when the model couldn't produce schema-valid
@@ -589,7 +634,7 @@ jobs:
       # Letting the action's own failure fail the check is louder and right.
       - name: Strict mode — fail check on critical findings
         if: success()
-        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.22
+        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.23
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # v0.6.22 / 0.0.O: the summary is now posted by the workflow
