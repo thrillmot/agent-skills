@@ -34,7 +34,7 @@ What counts as a decision, branch routing, `--stage scoped` for unrelated WIP, `
 This repo uses [clud-bug](https://cludbug.dev) for automatic PR reviews.
 Full collaboration rules — fix-push flow, skill structure, comment format,
 strict-mode mechanics, workflow-edit constraint — live in the bundled
-[`clud-bug-collaboration` skill](skills/clud-bug-collaboration/SKILL.md).
+[`clud-bug-collaboration` skill](.claude/skills/clud-bug-collaboration/SKILL.md).
 Read that skill before pushing fixes addressing prior review threads.
 
 Strict mode is **on** in this repo (workflow check fails on critical findings). Toggle via `.claude/skills/.clud-bug.json`
@@ -44,5 +44,5 @@ For agent invocations of the `clud-bug` CLI, prefer `CLUD_BUG_QUIET=1`
 (or pass `--quiet`) — suppresses progress chatter and emits a single
 `ok <key-value>` summary line per command.
 
-_Installed at clud-bug v0.6.22._
+_Installed at clud-bug v0.6.23._
 <!-- clud-bug-end -->
