@@ -13,27 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05
+## 2026-05 (23 decisions)
 
-- **2026-05-29** — 0.0.K companion: add applies_to to brand-voice-review, api-contract-enforcement, test-discipline *(chore/applies-to-scoped-skills)* — [decisions-branches/chore__applies-to-scoped-skills.md](decisions-branches/chore__applies-to-scoped-skills.md)
-- **2026-05-29** — Update token-frugal-tooling skill with Phase 0.5 patterns (0.0.T, 0.0.W, 0.0.R, 0.0.X, 0.0.E) *(chore/token-frugal-tooling-phase-0.5)* — [decisions-branches/chore__token-frugal-tooling-phase-0.5.md](decisions-branches/chore__token-frugal-tooling-phase-0.5.md)
-- **2026-05-29** — chore: add @AGENTS.md import to CLAUDE.md (Q4 refinement / 0.0.I) *(chore/agents-md-import)* — [decisions-branches/chore__agents-md-import.md](decisions-branches/chore__agents-md-import.md)
-- **2026-05-28** — chore: clud-bug v0.5.16 → v0.6.12 (Sonnet pin, caching, budgets, brief CLI, incremental-diff, AGENTS trim, self-update YAML fix) *(chore/clud-bug-update-v0.6.12)* — [decisions-branches/chore__clud-bug-update-v0.6.12.md](decisions-branches/chore__clud-bug-update-v0.6.12.md)
-- **2026-05-28** — PR #46: regen derived docs after merge with main *(feat/token-frugal-tooling-skill)* — [decisions-branches/feat__token-frugal-tooling-skill.md](decisions-branches/feat__token-frugal-tooling-skill.md)
-- **2026-05-28** — new token-frugal-tooling meta-skill (links logmind + clud-bug-collaboration; quick-reference) *(feat/token-frugal-tooling-skill)* — [decisions-branches/feat__token-frugal-tooling-skill.md](decisions-branches/feat__token-frugal-tooling-skill.md)
-- **2026-05-28** — clud-bug-collaboration skill update: cover v0.6.3–v0.6.11 cost-control wiring + CLUD_BUG_QUIET + new comment format *(feat/clud-bug-collab-v0.6-skill-update)* — [decisions-branches/feat__clud-bug-collab-v0.6-skill-update.md](decisions-branches/feat__clud-bug-collab-v0.6-skill-update.md)
-- **2026-05-28** — logmind skill update: cover v0.5.0–v0.5.4 features (file-structure depth-2, quiet/ok, show flags, timeline brief) *(feat/logmind-v0.5-skill-update)* — [decisions-branches/feat__logmind-v0.5-skill-update.md](decisions-branches/feat__logmind-v0.5-skill-update.md)
-- **2026-05-27** — chore: regen docs/file-structure.md (post-PR#37 staleness) *(chore/regen-fs-post-pr37)* — [decisions-branches/chore__regen-fs-post-pr37.md](decisions-branches/chore__regen-fs-post-pr37.md)
-- **2026-05-27** — Add skill-frontmatter-quality + exclude clud-bug-collaboration from this repo's clud-bug baseline *(chore/curated-clud-bug-baseline)* — [decisions-branches/chore__curated-clud-bug-baseline.md](decisions-branches/chore__curated-clud-bug-baseline.md)
-- **2026-05-27** — chore: regen docs/file-structure.md (drop legacy Last updated line) *(chore/regen-derived-docs)* — [decisions-branches/chore__regen-derived-docs.md](decisions-branches/chore__regen-derived-docs.md)
-- **2026-05-27** — fix(notify-clud-bug.yml): pipefail-safe the detect grep (zero-matches no-op) *(fix/notify-clud-bug-pipefail-grep)* — [decisions-branches/fix__notify-clud-bug-pipefail-grep.md](decisions-branches/fix__notify-clud-bug-pipefail-grep.md)
-- **2026-05-27** — chore: add test.yml stub for org ruleset uniformity *(chore/add-test-workflow-stub)* — [decisions-branches/chore__add-test-workflow-stub.md](decisions-branches/chore__add-test-workflow-stub.md)
-- **2026-05-27** — fix: fetch-depth 2→0 + handle first-push zero-ref BEFORE (clud-bug critical) *(feat/notify-clud-bug-push-trigger)* — [decisions-branches/feat__notify-clud-bug-push-trigger.md](decisions-branches/feat__notify-clud-bug-push-trigger.md)
-- **2026-05-27** — feat(notify-clud-bug.yml): add push trigger with matrix strategy over changed baselines *(feat/notify-clud-bug-push-trigger)* — [decisions-branches/feat__notify-clud-bug-push-trigger.md](decisions-branches/feat__notify-clud-bug-push-trigger.md)
-- **2026-05-27** — chore: bump logmind pin 0.3.0 → 0.3.3 *(chore/bump-logmind-pin-0.3.3)* — [decisions-branches/chore__bump-logmind-pin-0.3.3.md](decisions-branches/chore__bump-logmind-pin-0.3.3.md)
-- **2026-05-27** — Rewrite notify-clud-bug.yml as mechanical PR-opener (workflow_dispatch only) *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
-- **2026-05-27** — Add review_mode: shared to all baseline-type skill frontmatters *(feat/skill-review-mode)* — [decisions-branches/feat__skill-review-mode.md](decisions-branches/feat__skill-review-mode.md)
-- **2026-05-27** — Add .github/dependabot.yml for github-actions ecosystem only *(chore/dependabot)* — [decisions-branches/chore__dependabot.md](decisions-branches/chore__dependabot.md)
-- **2026-05-27** — Document logmind v0.3.0 merge-driver surface in skills/logmind/SKILL.md *(docs/logmind-v0.3.0)* — [decisions-branches/docs__logmind-v0.3.0.md](decisions-branches/docs__logmind-v0.3.0.md)
-- **2026-05-26** — chore: migrate to thrillmade org + install logmind v0.3.0 + clud-bug *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
+- **2026-05-29** — Upgrade agent-skills to clud-bug v0.6.22 + logmind v0.5.6 (Phase 0.5 propagation §1) *(chore/clud-bug-v0.6.22-+-logmind-v0.5.6)* — [decisions-branches/chore__clud-bug-v0.6.22-+-logmind-v0.5.6.md](decisions-branches/chore__clud-bug-v0.6.22-+-logmind-v0.5.6.md)
+- *... 21 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
