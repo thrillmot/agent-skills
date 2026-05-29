@@ -83,6 +83,37 @@ the working tree gets bundled into the decision commit. No follow-up
 `git add`, no follow-up `git commit`, no follow-up `git push`. One command,
 one commit, working tree clean.
 
+### Token cost: `git` vs `logmind log` (Phase 0.5 finding)
+
+Running `git add` + `git commit` + `git push` directly costs **more
+tokens** than a single `logmind log` for the same decision-bearing
+commit. Three reasons:
+
+1. Each git command emits multi-line stdout (staging list, commit
+   summary with insertions/deletions, push progress with remote refs).
+   The agent reads each one back to confirm — that's 3 round-trips
+   instead of 1.
+2. `logmind log` under `LOGMIND_QUIET=1` emits exactly one line:
+   `ok logged: <sha> "<title>"`. Verifiable by the agent in one
+   read; no narration in the context window.
+3. The `git` flow loses the decision-log entry — future sessions can't
+   grep for the rationale. They re-derive it from the diff (more
+   tokens, lossier signal). `logmind log` writes the entry as a
+   side-effect, so the decision IS preserved without an extra step.
+
+Bench numbers (`bench.per_call`, Q7-logmind): every
+`logmind log` pair is a measurable net saver vs its git equivalent,
+gated by `test_per_call_returns_saver_or_break_even_for_log_command`
+in CI. If this test ever flips red, `logmind log` has become a token
+spender and the change ships as P0.
+
+**Heuristic for the agent**: when about to run `git commit`, ask
+"is this commit decision-bearing?" (architecture, alternatives
+weighed, dependency change, non-obvious behaviour shift). If yes,
+swap to `logmind log "..." -r "..."`. The decision and the code that
+prompted it travel together in one commit, and the bench shows you
+saved tokens too.
+
 If you find yourself running `git add`, `git commit`, `git push`, or
 `logmind timeline --write` **after** a `logmind log`, you're working
 against the design. Two likely causes:

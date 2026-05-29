@@ -102,6 +102,101 @@ explaining how to set it. (For bot/fork PRs where the secret legitimately
 isn't passed, the guard posts a one-line advisory comment and exits 0
 instead of failing red.)
 
+## Bot identity contract (v0.6.22+)
+
+Two different bot accounts post to a clud-bug PR — knowing which is
+which matters when you grep / filter prior comments:
+
+- **`claude[bot]`** authors **inline review threads** (every 🔴 / 🟡
+  finding posts here). Authentication: composite-action exchanges
+  the `claude-code-oauth-token` for a short-lived App token; comments
+  post under the App's identity.
+- **`github-actions[bot]`** authors the **summary comment** (the
+  `## 🐛 Clud Bug review` H2 block with the stats line + collapsed
+  per-skill scan + per-section findings). Authentication: workflow
+  post-step uses the workflow's own `GITHUB_TOKEN`, which posts under
+  `github-actions[bot]`.
+
+When you scan prior comments to decide what was already said, your
+filter must accept BOTH logins. Example incremental-diff handshake:
+
+```bash
+# CORRECT — accept both identities
+gh api "repos/$REPO/issues/$PR/comments" --jq '
+  [.[] | select(.user.login == "github-actions[bot]" or .user.login == "claude[bot]")]
+  | sort_by(.created_at)
+'
+
+# WRONG — drops every inline finding ever posted
+gh api "repos/$REPO/issues/$PR/comments" --jq '
+  [.[] | select(.user.login == "github-actions[bot]")]
+'
+```
+
+## Structured output schema (v0.6.22+ / 0.0.O)
+
+The summary comment is no longer free-form prose. The LLM emits a
+JSON object matching the workflow-defined `--json-schema` (see
+`templates/workflow.yml.tmpl`); the workflow post-step renders that
+JSON to GitHub-flavored markdown.
+
+What this means for collaborating agents:
+
+- The shape is **stable**. Stats counts, per-skill scan rows, per-
+  finding objects (`skill`, `file`, `line`, `summary`, `reasoning`)
+  always appear in the same order; the H2 header always matches the
+  documented enum (`critical findings` / `clean` / `bare`).
+- Inline review threads still post one-per-finding via the MCP tool
+  `mcp__github_inline_comment__create_inline_comment` — those are
+  NOT in the structured output. The structured object describes them
+  (for the renderer's collapsed scan + counts), but the actual
+  GitHub inline-comment placement is the MCP tool's job.
+- The structured output also carries `last_reviewed_sha` — the HEAD
+  SHA at review time, used by the incremental-diff handshake
+  (v0.6.10) on the next fix-push. The renderer embeds it as
+  `<!-- last-reviewed-sha: <sha> -->` in the summary body.
+
+## Fallback when structured output is empty
+
+If `claude-code-action` retried schema validation up to its limit
+and never produced a valid object, `structured_output` arrives at
+the post-step empty. The post-step then posts a **bare-H2 advisory
+comment** (no body, just `## 🐛 Clud Bug review`) and exits 0.
+
+- Strict-mode gate falls open in this case — the gate post-step
+  greps for `## 🐛 Clud Bug review` and the bare header matches, so
+  the check turns green ADVISORY (not red). Q6 invariant: missing
+  signal must not block merge silently.
+- The job-summary panel surfaces the fallback so an operator can
+  see why no findings rendered. Look for "structured-output empty;
+  fell back to bare H2" if you find a PR where the bot ran but
+  emitted nothing.
+
+## `bot-login` override (v0.6.22+)
+
+Each consuming workflow passes `bot-login: 'github-actions[bot]'`
+to the `strict-mode-gate` composite action. The composite's default
+is still `claude[bot]` (pre-v0.6.22 back-compat), but every freshly-
+rendered consumer workflow overrides to `github-actions[bot]` because
+THAT is now the identity that authors the H2 summary the gate
+inspects.
+
+If you write a custom workflow that calls the gate directly, set
+`bot-login: 'github-actions[bot]'` — using the composite default
+will silently fail to find the summary on v0.6.22+ posts.
+
+## `status_header: "bare"` (v0.6.22+ default)
+
+Non-strict-mode repos (the default — check
+`.claude/skills/.clud-bug.json` for `strictMode: true`) emit
+`status_header: "bare"` in the structured output. The renderer
+produces `## 🐛 Clud Bug review` with no suffix, matching the v0.6.21-
+behaviour exactly. Strict-mode repos emit `critical findings` or
+`clean` and the renderer appends `— critical findings` / `— clean`.
+
+The strict-mode-gate post-step greps for "critical findings" to
+decide red-or-green; "bare" + "clean" both fall through to green.
+
 ## Reading review comments (v0.6.5+ format)
 
 Since v0.6.5, every Clud Bug summary comment leads with a stats line for
