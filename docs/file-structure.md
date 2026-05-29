@@ -34,6 +34,7 @@ agent-skills
 │   ├── decisions-branches
 │   │   ├── chore__add-test-workflow-stub.md
 │   │   ├── chore__bump-logmind-pin-0.3.3.md
+│   │   ├── chore__clud-bug-update-v0.6.12.md
 │   │   ├── chore__curated-clud-bug-baseline.md
 │   │   ├── chore__dependabot.md
 │   │   ├── chore__migrate-to-thrillmade.md
