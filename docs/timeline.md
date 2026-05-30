@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (27 decisions)
+## 2026-05 (30 decisions)
 
-- **2026-05-29** — Upgrade agent-skills to clud-bug v0.6.25 (Smart Budget Phase 1) *(chore/clud-bug-v0.6.25)* — [decisions-branches/chore__clud-bug-v0.6.25.md](decisions-branches/chore__clud-bug-v0.6.25.md)
-- *... 25 more decisions ...*
+- **2026-05-29** — fix: stale SC 2.4.13 (AAA) label in Sources footer; add SC 2.4.12 (AAA Enhanced) reference *(skills/color-algorithms)* — [decisions-branches/skills__color-algorithms.md](decisions-branches/skills__color-algorithms.md)
+- *... 28 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
