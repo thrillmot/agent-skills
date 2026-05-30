@@ -187,6 +187,60 @@ body changed. **If `doctor` reports an `AGENTS.md` stale row, your repo's
 embedded logmind instructions are older than what the installed logmind
 would write — re-run `logmind init` to refresh in place.**
 
+### `logmind doctor` exit behavior (v0.5.13+)
+
+- **Exits non-zero** when inside a git repo and the merge-driver config
+  is missing from `.git/config`. Pre-v0.5.13 this was silently reported
+  OK; now it surfaces as drift because a missing merge driver is one
+  rebase away from a `check-derived-docs` CI failure. Fix: run
+  `logmind init`.
+- **Predictive stale-derived-docs warning** — when the current branch is
+  behind `origin/<default-branch>` AND the gap touches
+  `docs/timeline.md` or `docs/file-structure.md`, doctor surfaces:
+  > "next push will likely DIRTY this PR; consider `logmind rebase` now."
+  This is informational (does **not** flip overall exit code to
+  non-zero). If you see it, run `logmind rebase` before pushing.
+
+## Rebasing onto the default branch: `logmind rebase` (v0.5.13+)
+
+When doctor warns about stale derived docs, or any time you need to rebase
+a feature branch cleanly, use:
+
+```bash
+logmind rebase                     # fetch + rebase onto origin/<default-branch> + push
+logmind rebase --base main         # explicit base branch
+logmind rebase --no-push           # fetch + rebase only; skip push
+logmind rebase --no-fetch          # skip fetch; use already-fetched remote state
+```
+
+`logmind rebase` is a one-command wrapper for:
+`git fetch origin && git rebase origin/<base> && git push --force-with-lease`
+
+**Guard-rails:**
+- Refuses to run on a detached HEAD.
+- Refuses to run on the default branch itself.
+- Prints clear recovery hints on rebase or push failures.
+
+Do **not** manually run `git fetch` + `git rebase` + `git push --force-with-lease`
+in sequence when you could use `logmind rebase` — the wrapper keeps the
+merge drivers active and surfaces better error guidance.
+
+## Keeping CI workflow pins current: `logmind agents update --apply` (v0.5.13+)
+
+After upgrading logmind (or clud-bug), CI workflow files can fall out of
+sync with the new version — the workflow templates get re-rendered but the
+`pip install "logmind==X.Y.Z"` pin line inside them stays on the old
+version. Fix with:
+
+```bash
+logmind agents update --apply
+```
+
+This sweeps the four canonical workflow files and bumps any stale
+`pip install "logmind==…"` pins to the currently installed version.
+Run it whenever `logmind doctor` reports workflow-pin drift, or after any
+`pip install --upgrade logmind`.
+
 ## Parallel-PR merges: timeline + file-structure merge driver (v0.3.0+)
 
 Two PRs that both run `logmind log` no longer textually conflict on
@@ -210,9 +264,8 @@ Two PRs that both run `logmind log` no longer textually conflict on
 
 `logmind doctor` reports three new rows for these (v0.3.0+):
 `.gitattributes (merge driver)`, `git config (merge driver)`, and
-`post-merge hook`. Missing rows are not drift — they're "not yet
-installed for this logmind version" — the next `logmind init` resolves
-them silently.
+`post-merge hook`. **Since v0.5.13, a missing `git config (merge driver)`
+row causes `doctor` to exit non-zero** — run `logmind init` to resolve.
 
 The merge driver invokes `logmind file-structure --write <path>`
 (v0.3.0+), the mirror of `logmind timeline --write`. Like the timeline
@@ -254,6 +307,13 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.13**: `logmind doctor` exits non-zero on missing merge-driver
+  config. New `logmind rebase` subcommand. `logmind agents update --apply`
+  sweeps stale workflow pins. Doctor gains predictive stale-derived-docs
+  warning.
+
+After upgrading, also run `logmind agents update --apply` to sync any
+stale `pip install "logmind==…"` pins in CI workflow files.
 
 ## Setup (one-time, per project)
 
@@ -263,6 +323,7 @@ If the project doesn't yet have logmind:
 pip install logmind
 logmind init               # scaffolds docs/, AGENTS.md, GH Actions, .gitignore block, merge drivers + post-merge hook (v0.3.0+)
 logmind doctor             # confirm clean install
+logmind agents update --apply   # sync workflow pins to installed version (v0.5.13+)
 ```
 
 ## Don'ts
@@ -282,6 +343,11 @@ logmind doctor             # confirm clean install
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
   someone touched outside logmind), not part of the normal flow.
+- **Don't manually run `git fetch` + `git rebase` + `git push --force-with-lease`
+  when `logmind rebase` is available** — use `logmind rebase` instead
+  so the merge drivers stay active and error hints are surfaced clearly.
+- **Don't ignore `logmind doctor`'s predictive stale-derived-docs warning.**
+  If doctor says the next push will DIRTY a PR, run `logmind rebase` now.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
