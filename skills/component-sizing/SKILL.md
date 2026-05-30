@@ -1,6 +1,7 @@
 ---
 name: component-sizing
-description: Use when picking a button / input / chip / badge height, or proposing a component-height ladder for a density mode. Names UDTS's curated 5-rung height ladders per density (4/8 balanced default: 24, 32, 40, 48, 56; 2/4 dense: 24, 28, 36, 44, 52; 4/16 spacious: 32, 48, 64, 80, 96), the curated icon-size ladder (12, 16, 24, 32, 40, 48), the font-size pairing per rung, the rule for which rungs are interactive (≥ 24 CSS px WCAG 2.5.5 floor — but interactive rungs start at the `sm` 32 px tier; `xs` 24 px is non-interactive only), and why heights and icon sizes are curated, not formula-derived.
+description: |
+  Use when picking a button / input / chip / badge height, or proposing a component-height ladder for a density mode. Names UDTS's curated 5-rung height ladders per density — balanced (4/8 grid) at 24, 32, 40, 48, 56; dense (2/4 grid) at 24, 28, 36, 44, 52; spacious (4/16 grid) at 32, 48, 64, 80, 96. Also names the curated icon-size ladder (12, 16, 24, 32, 40, 48), the font-size pairing per rung, the rule for which rungs are interactive (≥ 24 CSS px WCAG 2.5.8 floor — but interactive rungs start at the `sm` 32 px tier; `xs` 24 px is non-interactive only), and why heights and icon sizes are curated, not formula-derived.
 ---
 
 # Component sizing
@@ -21,7 +22,7 @@ Component heights and icon sizes are **curated** in UDTS, not formula-derived. T
 
 ## The curated ladders
 
-UDTS ships three default density modes. Each is a 5-rung ladder labeled `xs` / `sm` / `md` / `lg` / `xl` — interactive rungs start at `sm` per the WCAG 2.5.5 floor (see [spacing-system](#cross-references)).
+UDTS ships three default density modes. Each is a 5-rung ladder labeled `xs` / `sm` / `md` / `lg` / `xl` — interactive rungs start at `sm` per the WCAG 2.5.8 floor (see [spacing-system](#cross-references)).
 
 ### Balanced (UDTS default, 4/8 grid)
 
@@ -73,9 +74,9 @@ A formula `(height) → font-size → icon-size` produces *mathematically clean*
 
 The curated 5-rung ladders give visual distinguishability at each rung, predictable font and icon pairing, and tap-target safety. The trade-off is less flexibility — but design systems benefit from less flexibility at this layer.
 
-## The WCAG 2.5.5 floor
+## The WCAG 2.5.8 floor
 
-Interactive control heights start at **24 CSS px** per WCAG 2.5.5 AA Target Size (added in WCAG 2.2). In practice:
+Interactive control heights start at **24 CSS px** per WCAG 2.5.8 AA Target Size (added in WCAG 2.2). In practice:
 
 - **Balanced and dense:** `xs` (24 / 24 px) is **non-interactive only**. Interactive rungs start at `sm` (32 / 28 px). The 24 px rung exists for badges, read-only chips, density tags.
 - **Spacious:** `xs` lifts to 32 px, so the entire ladder is interactive-safe.
@@ -95,7 +96,7 @@ Sibling controls in the same UI surface should share a rung — mixing `sm` and 
 
 ## Cross-references
 
-- **REQUIRED BACKGROUND:** `spacing-system` — the unit primitives (minor + major) drive which density mode applies, and the WCAG 2.5.5 floor lives there.
+- **REQUIRED BACKGROUND:** `spacing-system` — the unit primitives (minor + major) drive which density mode applies, and the WCAG 2.5.8 floor lives there.
 - **For the font sizes paired with each rung:** `type-scale` — the per-rung font is taken from the canonical scale, not free-picked.
 - **For line-heights inside each rung:** `line-height-grid` — interactive controls use `lh-ui` (1.20), not `lh-prose`.
 
@@ -111,7 +112,7 @@ After picking a rung:
 
 ## Sources
 
-- [WCAG 2.5.5 — Target Size (AA, added in 2.2)](https://www.w3.org/TR/WCAG22/#target-size-minimum).
+- [WCAG 2.5.8 — Target Size (AA, added in 2.2)](https://www.w3.org/TR/WCAG22/#target-size-minimum).
 - Material Design 3 — Component sizing guidance.
 - Apple Human Interface Guidelines — touch targets (44 pt mobile; relaxed to 24 CSS px desktop per WCAG).
 - The UDTS / token.design spacing-and-sizing foundations spec.

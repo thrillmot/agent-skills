@@ -1,6 +1,6 @@
 ---
 name: spacing-system
-description: Use when designing or auditing a spacing scale for padding, gaps, icon sizes, component heights, or border radii. Names the two-unit primitive model UDTS uses (minor + major, where major is divisible by minor — typically 4+8, 2+4, or 4+16), the derivation rule (padding / gap / icon / height ladders are all derived from the unit primitive, not independently invented), the 24 CSS px WCAG 2.5.5 AA Pointer Target floor for interactive heights, and the T-shirt-vs-numeric naming options (UDTS supports both). Cite when an agent proposes a single-unit grid for a mixed-density system, or invents off-grid spacing values for "this one specific case."
+description: Use when designing or auditing a spacing scale for padding, gaps, icon sizes, component heights, or border radii. Names the two-unit primitive model UDTS uses (minor + major, where major is divisible by minor — typically 4+8, 2+4, or 4+16), the derivation rule (padding / gap / icon / height ladders are all derived from the unit primitive, not independently invented), the 24 CSS px WCAG 2.5.8 AA Pointer Target floor for interactive heights, and the T-shirt-vs-numeric naming options (UDTS supports both). Cite when an agent proposes a single-unit grid for a mixed-density system, or invents off-grid spacing values for "this one specific case."
 ---
 
 # Spacing system
@@ -66,14 +66,14 @@ Same ladder as padding, separately labeled (`gap-*`) because horizontal and vert
 
 ### Component-height ladder
 
-Curated per density mode, with the **24 CSS px WCAG 2.5.5 AA Pointer Target floor** for interactive controls (anything clickable / tappable / focusable). See `component-sizing` for the per-density ladder.
+Curated per density mode, with the **24 CSS px WCAG 2.5.8 AA Pointer Target floor** for interactive controls (anything clickable / tappable / focusable). See `component-sizing` for the per-density ladder.
 
 ### Border-radius ladder
 
 ```
 radius-0     = 0
 radius-sm    = minor                     (e.g. 4)
-radius-md    = major / 2                 (e.g. 4)        — same as sm at balanced; diverges at dense
+radius-md    = major / 2                 (e.g. 4)        — equals sm at balanced and dense; diverges at spacious (sm=4, md=8)
 radius-lg    = major                     (e.g. 8)
 radius-xl    = 1.5 × major               (e.g. 12)
 radius-2xl   = 2 × major                 (e.g. 16)
@@ -98,7 +98,7 @@ UDTS emits **both** sets of names; consumers pick the family that fits their cod
 
 Both are emitted in DTCG with cross-aliases. Pick the family that fits your codebase, not "the correct one" — there isn't one.
 
-## The WCAG 2.5.5 AA Pointer Target floor
+## The WCAG 2.5.8 AA Pointer Target floor
 
 Any interactive control's minimum **height** is **24 CSS px** for AA conformance. The `xs` rung in the component-height ladder is reserved for non-interactive elements (badges, read-only chips, density tags). Anything clickable starts at the `sm` rung — typically 32 px in balanced density.
 
@@ -121,6 +121,6 @@ After picking unit primitives + emitting ladders:
 
 ## Sources
 
-- [WCAG 2.5.5 — Target Size (AA, added in 2.2)](https://www.w3.org/TR/WCAG22/#target-size-minimum) — the 24 CSS px floor.
+- [WCAG 2.5.8 — Target Size (AA, added in 2.2)](https://www.w3.org/TR/WCAG22/#target-size-minimum) — the 24 CSS px floor.
 - [Material Design's icon sizing](https://m3.material.io/styles/icons) — informs the curated icon set.
 - The UDTS / token.design spacing-and-sizing foundations spec.
