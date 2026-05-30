@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (27 decisions)
+## 2026-05 (28 decisions)
 
-- **2026-05-29** — Upgrade agent-skills to clud-bug v0.6.25 (Smart Budget Phase 1) *(chore/clud-bug-v0.6.25)* — [decisions-branches/chore__clud-bug-v0.6.25.md](decisions-branches/chore__clud-bug-v0.6.25.md)
-- *... 25 more decisions ...*
+- **2026-05-29** — Upgrade agent-skills to clud-bug v0.6.26 (Smart Budget Phase 2a — 0.0.W² + L6) *(chore/clud-bug-v0.6.26)* — [decisions-branches/chore__clud-bug-v0.6.26.md](decisions-branches/chore__clud-bug-v0.6.26.md)
+- *... 26 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)

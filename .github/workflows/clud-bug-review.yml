@@ -1,4 +1,4 @@
-# clud-bug-template-version: v11
+# clud-bug-template-version: v12
 name: Clud Bug 🐛 Crawls Your Code
 
 on:
@@ -18,12 +18,45 @@ jobs:
   # Pre-flight: classify the PR diff to decide (a) whether to skip the
   # LLM review entirely, and (b) which model to route to.
   #
-  # (a) Workflow-only PRs (v0.6.14 / 0.0.W): if every changed file
-  # matches `.github/workflows/clud-bug-*.yml` or
-  # `.github/actions/strict-mode-gate/**`, the LLM call is skipped
-  # entirely — claude-code-action would refuse anyway (self-modification
-  # guard), and template re-renders have no useful review surface.
-  # Skipping converts what were admin-bypass merges into normal ones.
+  # (a) Workflow-only / clud-bug-update PRs (v0.6.14 / 0.0.W;
+  # v0.6.26 / 0.0.W²): the LLM call is skipped when EITHER condition:
+  #
+  #   - Every changed file matches `.github/workflows/clud-bug-*.yml`
+  #     or `.github/actions/strict-mode-gate/**` (original 0.0.W —
+  #     pure workflow PRs that claude-code-action would refuse anyway
+  #     via its self-modification guard).
+  #
+  #   - The PR is a recognized `clud-bug update` propagation: every
+  #     changed file is in the clud-bug-update output allowlist AND a
+  #     workflow file (or strict-mode-gate composite) is part of the
+  #     change. v0.6.26 / 0.0.W² added this branch so the propagation
+  #     dance doesn't require admin-bypass every cycle.
+  #
+  # Allowlist (files `clud-bug update` legitimately touches):
+  #   .github/workflows/clud-bug-*.yml          (workflow re-render)
+  #   .github/actions/strict-mode-gate/*        (composite re-render)
+  #   AGENTS.md                                 (logmind block + clud-bug stanza)
+  #   .cursorrules / .clinerules / .windsurfrules / .continuerules
+  #   .github/copilot-instructions.md
+  #   .claude/skills/.clud-bug.json             (manifest)
+  #   .claude/skills/{critical-issues-only,evidence-based-review,
+  #                   respect-existing-conventions}/SKILL.md (baselines)
+  #   docs/timeline.md / docs/file-structure.md / docs/decisions.md
+  #   docs/decisions-branches/*.md              (logmind side-effects)
+  #
+  # The workflow-change requirement is the SIGNATURE that distinguishes
+  # "agent ran clud-bug update" from "user is editing AGENTS.md by hand."
+  # An AGENTS.md-only PR (no workflow change) still goes through normal
+  # review — this catches the prompt-injection-via-AGENTS.md attack
+  # surface that a naive allowlist would open.
+  #
+  # Safety envelope:
+  #   - Workflow file is still protected by the App-side guard (it just
+  #     never runs in this branch).
+  #   - Files in the allowlist are non-executable; modifying them can't
+  #     grant code execution.
+  #   - strictMode toggle is read from BASE ref so a PR can't disable
+  #     strict-mode on itself.
   #
   # (b) Trivial PRs (v0.6.15 / 0.0.R): if the PR author is a dep-bumping
   # bot (dependabot, renovate) OR the diff is small (<2KB) AND only
@@ -82,18 +115,49 @@ jobs:
             exit 0
           fi
 
-          # --- (a) workflow-only classifier ---
-          IS_WORKFLOW_ONLY=true
+          # --- (a) workflow-only / clud-bug-update classifier
+          #         (v0.6.14 / 0.0.W; widened in v0.6.26 / 0.0.W²) ---
+          # Two-track check:
+          #   ALL_IN_ALLOWLIST = every changed file is in the
+          #     clud-bug-update output allowlist (see header design notes
+          #     for the full list + rationale).
+          #   HAS_WORKFLOW_CHANGE = at least one workflow-file or
+          #     strict-mode-gate change is present. This is the signature
+          #     that distinguishes "clud-bug update output" from "user
+          #     edited AGENTS.md by hand" — naked AGENTS.md edits go
+          #     through normal review.
+          #
+          # Skip when both are true. Backward-compat with v0.6.14's
+          # `is_workflow_only` output name preserved (semantic widened to
+          # "skip-review-eligible"; the dependent clud-bug-review job
+          # gates on this output without needing a rename).
+          ALL_IN_ALLOWLIST=true
+          HAS_WORKFLOW_CHANGE=false
           while IFS= read -r f; do
             case "$f" in
-              .github/workflows/clud-bug-*.yml) ;;
-              .github/actions/strict-mode-gate/*) ;;
-              *) IS_WORKFLOW_ONLY=false; break ;;
+              .github/workflows/clud-bug-*.yml) HAS_WORKFLOW_CHANGE=true ;;
+              .github/actions/strict-mode-gate/*) HAS_WORKFLOW_CHANGE=true ;;
+              # v0.6.26 / 0.0.W² additions — files clud-bug update produces.
+              AGENTS.md) ;;
+              .cursorrules|.clinerules|.windsurfrules|.continuerules) ;;
+              .github/copilot-instructions.md) ;;
+              .claude/skills/.clud-bug.json) ;;
+              .claude/skills/critical-issues-only/SKILL.md) ;;
+              .claude/skills/evidence-based-review/SKILL.md) ;;
+              .claude/skills/respect-existing-conventions/SKILL.md) ;;
+              # logmind side-effects of `logmind log` on the same commit.
+              docs/timeline.md|docs/file-structure.md|docs/decisions.md) ;;
+              docs/decisions-branches/*.md) ;;
+              *) ALL_IN_ALLOWLIST=false; break ;;
             esac
           done <<< "$CHANGED"
+          IS_WORKFLOW_ONLY=false
+          if [ "$ALL_IN_ALLOWLIST" = "true" ] && [ "$HAS_WORKFLOW_CHANGE" = "true" ]; then
+            IS_WORKFLOW_ONLY=true
+          fi
           echo "is_workflow_only=$IS_WORKFLOW_ONLY" >> "$GITHUB_OUTPUT"
           if [ "$IS_WORKFLOW_ONLY" = "true" ]; then
-            echo "::notice title=Clud Bug 🐛::Skipping LLM review — PR only touches workflow files."
+            echo "::notice title=Clud Bug 🐛::Skipping LLM review — clud-bug update output (workflow + allowlist files, no review surface)."
             echo "model=$MODEL" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -747,7 +811,7 @@ jobs:
           THREADS_COUNT: ${{ needs.paths-check.outputs.threads_count }}
         run: |
           set -euo pipefail
-          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.25 render --stdin)
+          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.26 render --stdin)
           CALIBRATION="<!-- clud-bug-calibration: turns_estimated=$TURNS_ESTIMATED, max_turns=$MAX_TURNS, files=$FILES_COUNT, lines_added=$LINES_ADDED, lines_deleted=$LINES_DELETED, threads=$THREADS_COUNT -->"
           gh pr comment "$PR_NUMBER" --body "$BODY
 
@@ -757,22 +821,81 @@ jobs:
       # output after max retries (structured_output is empty). Keeps a
       # bare H2 header so the strict-mode gate sees a comment and falls
       # open (advisory) rather than panicking on a missing summary.
+      # v0.6.26 / §5.5 Layer 6: when structured_output is empty BUT inline
+      # findings were posted before the budget exhausted (tokenomics #21
+      # pattern), scrape the inline findings via gh api and render a
+      # synthetic summary that cites the real findings. Avoids the
+      # "0-findings-shown / 5-inline-posted" failure mode where the
+      # maintainer reading the PR sees a meaningless empty summary even
+      # though the review actually surfaced issues.
+      #
+      # If NO inline findings were posted either, falls through to the
+      # original advisory bare-H2 (legacy v0.6.22 behaviour).
       - name: Fallback summary (structured_output empty)
         if: success() && steps.clud-bug-review.outputs.structured_output == ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TURNS_ESTIMATED: ${{ needs.paths-check.outputs.turns_estimated }}
+          MAX_TURNS: ${{ needs.paths-check.outputs.max_turns }}
+          FILES_COUNT: ${{ needs.paths-check.outputs.files_count }}
+          LINES_ADDED: ${{ needs.paths-check.outputs.lines_added }}
+          LINES_DELETED: ${{ needs.paths-check.outputs.lines_deleted }}
+          THREADS_COUNT: ${{ needs.paths-check.outputs.threads_count }}
         run: |
           set -euo pipefail
-          gh pr comment "$PR_NUMBER" --body "## 🐛 Clud Bug review
+
+          # Layer 6: count inline findings claude[bot] posted on THIS
+          # head SHA via the inline-review-thread endpoint. Filter to
+          # the current SHA so older review-pass findings don't inflate
+          # the count.
+          INLINES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments?per_page=100" \
+            --jq "[.[] | select(.user.login == \"claude[bot]\" and .commit_id == \"$HEAD_SHA\")]")
+          INLINE_COUNT=$(echo "$INLINES" | jq 'length')
+          CRITICAL=$(echo "$INLINES" | jq '[.[] | select(.body | test("🔴"))] | length')
+          MINOR=$(echo "$INLINES" | jq '[.[] | select(.body | test("🟡"))] | length')
+          PREEXISTING=$(echo "$INLINES" | jq '[.[] | select(.body | test("🟣"))] | length')
+          # Findings with no emoji prefix (cross-cutting / un-prefixed) — count once.
+          UNPREFIXED=$(( INLINE_COUNT - CRITICAL - MINOR - PREEXISTING ))
+          [ "$UNPREFIXED" -lt 0 ] && UNPREFIXED=0
+
+          CALIBRATION="<!-- clud-bug-calibration: turns_estimated=$TURNS_ESTIMATED, max_turns=$MAX_TURNS, files=$FILES_COUNT, lines_added=$LINES_ADDED, lines_deleted=$LINES_DELETED, threads=$THREADS_COUNT, structured_output=empty, inline_findings=$INLINE_COUNT -->"
+
+          if [ "$INLINE_COUNT" -gt 0 ]; then
+            # L6 synthetic summary — cites the real inline findings the
+            # action managed to post before structured-output emit failed.
+            STATUS=""
+            [ "$CRITICAL" -gt 0 ] && STATUS=" — critical findings"
+            gh pr comment "$PR_NUMBER" --body "## 🐛 Clud Bug review${STATUS}
+
+          **This round:** $CRITICAL critical · $MINOR minor · 0 resolved from prior · 0 still open
+
+          Found: $CRITICAL 🔴 / $MINOR 🟡 / $PREEXISTING 🟣
+
+          ⚠️ **Synthetic summary** (v0.6.26 §5.5 Layer 6 fallback) — the action posted $INLINE_COUNT inline finding(s) before the structured-output emit step exhausted its turn budget (or hit schema-validation retries). The inline findings above ARE the substantive review; this summary is reconstructed from them. v0.6.26's Layer 5 (auto-retry on cap-hit) is the more permanent fix; this is the safety net.
+
+          <!-- last-reviewed-sha: $HEAD_SHA -->
+
+          $CALIBRATION"
+          else
+            # No inline findings either — legacy bare-H2 advisory. The
+            # action errored before it could post anything substantive.
+            gh pr comment "$PR_NUMBER" --body "## 🐛 Clud Bug review
 
           **This round:** 0 critical · 0 minor · 0 resolved from prior · 0 still open
 
           Found: 0 🔴 / 0 🟡 / 0 🟣
 
-          ⚠️ Structured output (\`--json-schema\`) returned empty — likely max-retries hit on schema validation. Investigate the action logs.
+          ⚠️ Structured output (\`--json-schema\`) returned empty AND no inline findings were posted. The action likely errored before producing review output — investigate the run logs.
 
-          Skills referenced: [none]"
+          Skills referenced: [none]
+
+          <!-- last-reviewed-sha: $HEAD_SHA -->
+
+          $CALIBRATION"
+          fi
 
       # Strict-mode gate. Fails the check when the BASE ref's manifest
       # has { "strictMode": true } AND the latest clud-bug review's first
@@ -789,7 +912,7 @@ jobs:
       # Letting the action's own failure fail the check is louder and right.
       - name: Strict mode — fail check on critical findings
         if: success()
-        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.25
+        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.26
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # v0.6.22 / 0.0.O: the summary is now posted by the workflow
