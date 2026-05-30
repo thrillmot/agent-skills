@@ -65,8 +65,11 @@ command, and you do NOT need to run `logmind timeline --write` separately:
 1. Appends the decision entry to the active log file (default branch →
    `docs/decisions.md`; feature branch → `docs/decisions-branches/<branch>.md`).
 2. Archives the oldest decision if `decisions.md` exceeds `max_recent` (rotation).
-3. Regenerates `docs/file-structure.md` (default branch only — on feature
-   branches the tree snapshot diverges and would conflict).
+3. **Regenerates `docs/file-structure.md` on every branch (v0.5.8+)** — the
+   tree snapshot is generated on feature branches as well as the default
+   branch. (Pre-v0.5.8 skipped this on feature branches; the skip was made
+   obsolete by v0.3.0's merge driver, which resolves conflicts by regenerating
+   from the merged tree.)
 4. **Regenerates `docs/timeline.md` on every branch (v0.2.3+)** — the derived
    index that `check-derived-docs` CI verifies.
 5. **`git add` every change in the working tree (default since v0.2.7)** —
@@ -254,6 +257,9 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.8**: `logmind log` now regenerates `docs/file-structure.md` on
+  feature branches as well as the default branch (previously skipped on
+  feature branches; made safe by the v0.3.0 merge driver).
 
 ## Setup (one-time, per project)
 
