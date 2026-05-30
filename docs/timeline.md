@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (35 decisions)
+## 2026-05 (37 decisions)
 
-- **2026-05-29** — fix: design-token-naming [class] anchor → apca-contrast; semver description names rename rule pre-1.0; dtcg adds transition composite example *(skills/token-format)* — [decisions-branches/skills__token-format.md](decisions-branches/skills__token-format.md)
-- *... 33 more decisions ...*
+- **2026-05-30** — fix: add review_mode: dedicated to wig-review frontmatter *(skills/wig-review)* — [decisions-branches/skills__wig-review.md](decisions-branches/skills__wig-review.md)
+- *... 35 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
