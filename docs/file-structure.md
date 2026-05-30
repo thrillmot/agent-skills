@@ -36,6 +36,7 @@ agent-skills
 │   ├── respect-existing-conventions
 │   ├── semver-design-tokens
 │   ├── skill-frontmatter-quality
+│   ├── skillforge
 │   ├── spacing-system
 │   ├── test-discipline
 │   ├── token-frugal-tooling
