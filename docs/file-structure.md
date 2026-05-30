@@ -25,6 +25,8 @@ agent-skills
 │   ├── clud-bug-collaboration
 │   ├── component-sizing
 │   ├── critical-issues-only
+│   ├── design-token-naming
+│   ├── dtcg-format
 │   ├── evidence-based-review
 │   ├── line-height-grid
 │   ├── logmind
@@ -32,6 +34,7 @@ agent-skills
 │   ├── palette-relationships
 │   ├── pii-and-compliance
 │   ├── respect-existing-conventions
+│   ├── semver-design-tokens
 │   ├── skill-frontmatter-quality
 │   ├── spacing-system
 │   ├── test-discipline
