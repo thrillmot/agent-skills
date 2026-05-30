@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (31 decisions)
+## 2026-05 (33 decisions)
 
-- **2026-05-29** — feat: PR-C2 typography skills (type-scale, line-height-grid) *(skills/typography)* — [decisions-branches/skills__typography.md](decisions-branches/skills__typography.md)
-- *... 29 more decisions ...*
+- **2026-05-29** — fix: WCAG 2.5.5 → 2.5.8 (Target Size AA); radius-md divergence at spacious not dense; YAML block scalar for component-sizing description *(skills/spacing)* — [decisions-branches/skills__spacing.md](decisions-branches/skills__spacing.md)
+- *... 31 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)

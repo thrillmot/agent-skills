@@ -23,6 +23,7 @@ agent-skills
 │   ├── brand-voice-review
 │   ├── chroma-harmonization
 │   ├── clud-bug-collaboration
+│   ├── component-sizing
 │   ├── critical-issues-only
 │   ├── evidence-based-review
 │   ├── line-height-grid
@@ -32,6 +33,7 @@ agent-skills
 │   ├── pii-and-compliance
 │   ├── respect-existing-conventions
 │   ├── skill-frontmatter-quality
+│   ├── spacing-system
 │   ├── test-discipline
 │   ├── token-frugal-tooling
 │   ├── type-scale
