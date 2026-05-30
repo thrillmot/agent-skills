@@ -6,3 +6,8 @@
 - First propagation cycle that should NOT require admin-bypass — the propagation PR itself is detected as clud-bug-update-output by the v0.6.25-rendered workflow on agent-skills's main (which still has the old 0.0.W classifier). Note: this PR will still need admin-bypass; STARTING with v0.6.27 onward the new 0.0.W² is live on consumer main and propagation auto-skips.
 
 ---
+## 2026-05-30 01:00 - chore: real-content commit to trigger workflow synchronize
+
+**Reasoning:** Empty nudge commit at 28d557d didn't fire synchronize. Real content (this logmind log entry) does.
+
+---
