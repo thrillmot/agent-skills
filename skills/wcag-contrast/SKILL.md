@@ -1,6 +1,6 @@
 ---
 name: wcag-contrast
-description: Use when verifying a color pair meets WCAG 2.2 AA contrast requirements as a cross-check on APCA-driven generation, or when auditing a token catalog or design for legal-baseline accessibility compliance. Names the 4.5:1 normal-text rule, the 3:1 large-text rule, the size threshold for "large" (≥ 18 px or ≥ 14 px bold), the SC 1.4.11 non-text rule, and the role this check plays alongside APCA. Cite when an agent treats WCAG as the *primary* contrast model — UDTS uses it as a cross-check, with APCA as primary.
+description: Use when verifying a color pair meets WCAG 2.2 AA contrast requirements as a cross-check on APCA-driven generation, or when auditing a token catalog or design for legal-baseline accessibility compliance. Names the 4.5:1 normal-text rule, the 3:1 large-text rule, the size threshold for "large" stated in points (≥ 18 pt regular ≈ 24 CSS px, OR ≥ 14 pt bold ≈ 18.67 CSS px — not pixels), the SC 1.4.11 non-text rule, SC 2.4.13 focus appearance (AA in 2.2), and the role this check plays alongside APCA. Cite when an agent treats WCAG as the *primary* contrast model, or writes the large-text threshold as "14 px bold / 18 px regular" — UDTS uses WCAG as a cross-check with APCA as primary, and WCAG sizes are in points.
 ---
 
 # WCAG 2.2 AA contrast
@@ -20,14 +20,20 @@ WCAG 2.2 Level AA is the **legal-baseline** contrast standard for most jurisdict
 
 ## The rules
 
-| SC | Rule | Threshold | Applies to |
-|---|---|---|---|
-| 1.4.3 | Normal text | **4.5:1** | Text < 18 px regular OR < 14 px bold |
-| 1.4.3 | Large text | **3:1** | Text ≥ 18 px regular OR ≥ 14 px bold |
-| 1.4.11 | Non-text contrast | **3:1** | UI components, focus indicators, graphical objects |
-| 2.4.13 | Focus appearance (AAA only) | Specific minimums | New in 2.2 — verify ring is ≥ 2 px and meets 3:1 |
+| SC | Level | Rule | Threshold | Applies to |
+|---|---|---|---|---|
+| 1.4.3 | AA | Normal text | **4.5:1** | Text < 18 pt (24 CSS px) regular OR < 14 pt (~18.67 CSS px) bold |
+| 1.4.3 | AA | Large text | **3:1** | Text ≥ 18 pt (24 CSS px) regular OR ≥ 14 pt (~18.67 CSS px) bold |
+| 1.4.11 | AA | Non-text contrast | **3:1** | UI components, focus indicators, graphical objects |
+| 2.4.13 | **AA** (added in 2.2) | Focus appearance | Specific minimums | Verify the focus indicator is ≥ 2 px and meets 3:1 contrast against the focused control and adjacent background |
+| 2.4.12 | AAA (added in 2.2) | Focus not obscured (enhanced) | n/a | Focus indicator must not be obscured by author content |
 
-The bold-text threshold is **14 px bold**, not 18 px bold — a common miss. The 18 px threshold is for regular weight only.
+**WCAG sizes are in points, not pixels** — a frequent miss. 1 pt = 1.333 CSS px, so:
+
+- 18 pt regular = **24 CSS px** (not 18 px)
+- 14 pt bold = **~18.67 CSS px** (not 14 px)
+
+Text at 16 CSS px is *not* "large" even when bold; it falls under the 4.5:1 normal-text rule.
 
 ## Computing the ratio
 
@@ -56,7 +62,7 @@ For each contrast-bound pairing:
 
 1. Compute the WCAG ratio with sRGB-linearized luminance.
 2. Apply the role-appropriate threshold (4.5:1 normal text, 3:1 large text or non-text).
-3. Confirm the bold-text size rule — 14 px bold counts as large; 14 px regular does not.
+3. Confirm the bold-text size rule in **points** — 14 pt bold (~18.67 CSS px) counts as large; 14 CSS px bold does not. Same for 18 pt regular (= 24 CSS px), not 18 CSS px.
 4. Cross-check the APCA Lc (see `apca-contrast`).
 5. Reject if either model fails.
 
