@@ -187,11 +187,11 @@ body changed. **If `doctor` reports an `AGENTS.md` stale row, your repo's
 embedded logmind instructions are older than what the installed logmind
 would write — re-run `logmind init` to refresh in place.**
 
-## Parallel-PR merges: timeline + file-structure merge driver (v0.3.0+)
+## Parallel-PR merges and rebases: merge driver + hooks (v0.3.0+, v0.5.11+)
 
 Two PRs that both run `logmind log` no longer textually conflict on
-`docs/timeline.md` or `docs/file-structure.md` on rebase. v0.3.0's
-`logmind init` installs three pieces that handle this together:
+`docs/timeline.md` or `docs/file-structure.md` on merge or rebase.
+`logmind init` installs four pieces that handle this together:
 
 - **`.gitattributes` block** (idempotent, marker-bracketed) — registers
   `merge=logmind-timeline` and `merge=logmind-file-structure` for the
@@ -207,12 +207,20 @@ Two PRs that both run `logmind log` no longer textually conflict on
   per-file mid-merge before the other branch's `docs/decisions-branches/`
   files are checked out, so its output can miss decisions; the hook
   sweeps any incomplete regen at end-of-merge.
+- **`.git/hooks/post-rewrite`** (v0.5.11+) — companion to `post-merge`;
+  re-regenerates `timeline.md` and `file-structure.md` after every
+  `git rebase` (including multi-commit rebases) and `git commit --amend`.
+  Git invokes this hook once at end-of-rewrite regardless of how many
+  commits were replayed, so all derived files are fully synced. Same
+  idempotency contract as `post-merge` — refuses to overwrite a
+  foreign user-authored hook; canonical body re-installed on every
+  `logmind init`.
 
-`logmind doctor` reports three new rows for these (v0.3.0+):
-`.gitattributes (merge driver)`, `git config (merge driver)`, and
-`post-merge hook`. Missing rows are not drift — they're "not yet
-installed for this logmind version" — the next `logmind init` resolves
-them silently.
+`logmind doctor` reports rows for all of these (v0.3.0+ / v0.5.11+):
+`.gitattributes (merge driver)`, `git config (merge driver)`,
+`post-merge hook`, and `post-rewrite hook`. Missing rows are not drift —
+they're "not yet installed for this logmind version" — the next
+`logmind init` resolves them silently.
 
 The merge driver invokes `logmind file-structure --write <path>`
 (v0.3.0+), the mirror of `logmind timeline --write`. Like the timeline
@@ -254,6 +262,10 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.11**: `logmind init` installs a `post-rewrite` hook so
+  multi-commit rebases and `git commit --amend` keep `timeline.md` and
+  `file-structure.md` in sync automatically. Doctor gains a
+  `post-rewrite hook` row.
 
 ## Setup (one-time, per project)
 
@@ -261,7 +273,7 @@ If the project doesn't yet have logmind:
 
 ```bash
 pip install logmind
-logmind init               # scaffolds docs/, AGENTS.md, GH Actions, .gitignore block, merge drivers + post-merge hook (v0.3.0+)
+logmind init               # scaffolds docs/, AGENTS.md, GH Actions, .gitignore block, merge drivers + post-merge hook (v0.3.0+) + post-rewrite hook (v0.5.11+)
 logmind doctor             # confirm clean install
 ```
 
@@ -282,6 +294,12 @@ logmind doctor             # confirm clean install
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
   someone touched outside logmind), not part of the normal flow.
+- **Don't run `logmind timeline --write docs/timeline.md` manually after a
+  rebase.** Since v0.5.11 the `post-rewrite` hook regenerates derived
+  files automatically at the end of every rebase or amend. Manual
+  recovery (`logmind timeline --write … && git add … && git commit`) is
+  only needed on pre-v0.5.11 installs or if the hook is missing (check
+  `logmind doctor`).
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
