@@ -62,18 +62,21 @@ A single `logmind log` invocation is the complete `git add` + `git commit` +
 `git push` primitive — you do NOT need to follow up with any manual git
 command, and you do NOT need to run `logmind timeline --write` separately:
 
-1. Appends the decision entry to the active log file (default branch →
+1. **(v0.6.1+, opt-in) Auto-rebase** — if `git.auto_rebase: true` is set in
+   `.logmind/config.yml`, runs `maybe_auto_rebase()` BEFORE any local state
+   changes. See [Deterministic auto-rebase](#deterministic-auto-rebase-v061-opt-in) below.
+2. Appends the decision entry to the active log file (default branch →
    `docs/decisions.md`; feature branch → `docs/decisions-branches/<branch>.md`).
-2. Archives the oldest decision if `decisions.md` exceeds `max_recent` (rotation).
-3. Regenerates `docs/file-structure.md` (default branch only — on feature
+3. Archives the oldest decision if `decisions.md` exceeds `max_recent` (rotation).
+4. Regenerates `docs/file-structure.md` (default branch only — on feature
    branches the tree snapshot diverges and would conflict).
-4. **Regenerates `docs/timeline.md` on every branch (v0.2.3+)** — the derived
+5. **Regenerates `docs/timeline.md` on every branch (v0.2.3+)** — the derived
    index that `check-derived-docs` CI verifies.
-5. **`git add` every change in the working tree (default since v0.2.7)** —
+6. **`git add` every change in the working tree (default since v0.2.7)** —
    so the decision and the code that prompted it travel together in one
    commit. Override with `--stage scoped` if you have unrelated WIP.
-6. **`git commit`** with message `logmind: <decision>`.
-7. **`git push`** to remote (configurable via `auto_push` in
+7. **`git commit`** with message `logmind: <decision>`.
+8. **`git push`** to remote (configurable via `auto_push` in
    `.logmind/config.yml`).
 
 ## `logmind log` IS the commit primitive (no manual git after it)
@@ -110,6 +113,52 @@ On a feature branch the entry lands in
 `docs/decisions-branches/<sanitized-branch>.md`. On PR merge a workflow
 appends a one-line summary linking the PR + the per-branch file to
 `docs/decisions.md`. You do not manage this — `logmind log` does.
+
+## Deterministic auto-rebase (v0.6.1+, opt-in)
+
+When PRs land out-of-order, a trailing branch can go DIRTY because
+`main`'s `docs/timeline.md` gained new entries. Recovery is mechanical
+(rebase + regen timeline + force-with-lease push). v0.6.1 automates this
+behind a strong opt-in flag.
+
+**Default: OFF.** Enable in `.logmind/config.yml`:
+
+```yaml
+git:
+  auto_rebase: true
+```
+
+When enabled, `logmind log` checks **all 6 conditions** before touching
+any local state:
+
+1. `auto_rebase: true` in config
+2. Branch is NOT the default branch
+3. `git fetch origin <default>` succeeds
+4. `origin/<default>` ref exists
+5. Branch is behind `origin/<default>` (commits_behind > 0)
+6. **The gap touches EXACTLY `docs/timeline.md`** — no code, no other
+   derived docs, not even `docs/file-structure.md`
+
+If all 6 hold: rebase → (on conflict only in `timeline.md`) regen +
+continue → `git push --force-with-lease`. On any unexpected conflict
+surface: `git rebase --abort` + bail safely (no half-applied state).
+
+**Always `--force-with-lease`, never `--force`.** The scope is deliberately
+narrow: `docs/timeline.md` is fully derived (regenerated from
+`docs/decisions.md` + per-branch decision files), so conflict resolution
+= re-run the generator. Other files — even `docs/file-structure.md` —
+depend on broader repo state and are NOT in scope for this release.
+
+User-visible log line when it fires:
+
+```
+↻ logmind auto-rebased 'feature' onto origin/main
+  (was 2 commits behind, only docs/timeline.md affected
+  — safely deterministic).
+```
+
+When enabled but conditions don't hold, logmind emits a predictive
+heads-up naming the disqualifying files — no action is taken.
 
 ## Reading prior context
 
@@ -254,6 +303,10 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.6.1**: `logmind log` gains opt-in deterministic auto-rebase via
+  `git.auto_rebase: true` in `.logmind/config.yml`. Narrow scope: only
+  fires when the gap between your branch and `origin/<default>` is
+  exactly `docs/timeline.md`. Always uses `--force-with-lease`.
 
 ## Setup (one-time, per project)
 
@@ -282,6 +335,13 @@ logmind doctor             # confirm clean install
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
   someone touched outside logmind), not part of the normal flow.
+- **Don't use `--force` instead of `--force-with-lease` in any git push
+  associated with logmind workflows.** The auto-rebase feature (v0.6.1+)
+  enforces `--force-with-lease` exclusively; never substitute `--force`.
+- **Don't expect auto-rebase to handle anything beyond `docs/timeline.md`.**
+  If the gap between branches includes code files, `docs/file-structure.md`,
+  or any file other than `docs/timeline.md`, auto-rebase will refuse and
+  emit a heads-up — handle the rebase manually.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
