@@ -75,5 +75,6 @@ For each contrast-bound pairing:
 
 - [WCAG 2.2 Recommendation — SC 1.4.3](https://www.w3.org/TR/WCAG22/#contrast-minimum) — text contrast.
 - [SC 1.4.11 — non-text contrast](https://www.w3.org/TR/WCAG22/#non-text-contrast).
-- [SC 2.4.13 — focus appearance (AAA, new in 2.2)](https://www.w3.org/TR/WCAG22/#focus-appearance).
+- [SC 2.4.13 — focus appearance (AA, added in 2.2)](https://www.w3.org/TR/WCAG22/#focus-appearance).
+- [SC 2.4.12 — focus not obscured, enhanced (AAA, added in 2.2)](https://www.w3.org/TR/WCAG22/#focus-not-obscured-enhanced).
 - [Contrast Checker, WebAIM](https://webaim.org/resources/contrastchecker/) — sanity-check tool that matches the spec.

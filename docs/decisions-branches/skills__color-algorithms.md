@@ -18,3 +18,13 @@
 - wcag-contrast/SKILL.md table now includes Level column; 1.4.3 rows state thresholds in points with the CSS px conversion alongside; 2.4.13 row moved to AA; new 2.4.12 row added at AAA for the focus-not-obscured criterion. Description and Verification sections updated to mirror
 
 ---
+## 2026-05-29 23:18 - fix: stale SC 2.4.13 (AAA) label in Sources footer; add SC 2.4.12 (AAA Enhanced) reference
+
+**Reasoning:** clud-bug found Sources footer still showed AAA for SC 2.4.13 after the table was corrected
+
+**Alternatives considered:** leave Sources and rely on table — rejected, agents reading only Sources still see wrong level
+
+**Implications:**
+- Sources line 78 now AA; new SC 2.4.12 entry covers the AAA Focus Not Obscured (Enhanced) criterion
+
+---
