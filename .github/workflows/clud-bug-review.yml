@@ -1,9 +1,18 @@
-# clud-bug-template-version: v10
+# clud-bug-template-version: v11
 name: Clud Bug 🐛 Crawls Your Code
 
 on:
   pull_request:
     types: [opened, synchronize]
+
+# v0.6.25: workflow-level concurrency — newer pushes cancel older
+# in-flight runs on the same PR. Avoids the duplicate-review failure
+# mode hit on tokenomics #21 where my merge-of-main and logmind's
+# auto-regen-derived-docs follow-up fired two concurrent reviews
+# (each posted its own "in-progress" todo comment).
+concurrency:
+  group: clud-bug-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # Pre-flight: classify the PR diff to decide (a) whether to skip the
@@ -30,6 +39,17 @@ jobs:
       is_workflow_only: ${{ steps.classify.outputs.is_workflow_only }}
       model: ${{ steps.classify.outputs.model }}
       max_turns: ${{ steps.classify.outputs.max_turns }}
+      # v0.6.25 / §5.5 Layer 1.5 (calibration measurement): emit the
+      # raw estimated-turns alongside the actual max_turns the workflow
+      # passes to claude-code-action. The post-step records both into
+      # the summary comment as a hidden HTML marker so we can tune the
+      # per-file coefficients (Layer 1) from real consumer-review data
+      # over the Step 4 30-day window. Re-tune in v0.6.26+.
+      turns_estimated: ${{ steps.classify.outputs.turns_estimated }}
+      files_count: ${{ steps.classify.outputs.files_count }}
+      lines_added: ${{ steps.classify.outputs.lines_added }}
+      lines_deleted: ${{ steps.classify.outputs.lines_deleted }}
+      threads_count: ${{ steps.classify.outputs.threads_count }}
     steps:
       - name: Classify PR diff
         id: classify
@@ -42,15 +62,23 @@ jobs:
           CHANGED=$(gh pr diff "$PR_NUMBER" -R "$REPO" --name-only)
           MODEL=claude-sonnet-4-6   # default
           if [ -z "$CHANGED" ]; then
-            echo "is_workflow_only=false" >> "$GITHUB_OUTPUT"
-            echo "model=$MODEL" >> "$GITHUB_OUTPUT"
             # v0.6.23 / §5: max_turns must always be emitted because
             # clud-bug-review runs (is_workflow_only=false). Without
-            # this, --max-turns ${{ ... }} expands to '--max-turns '
-            # (empty), failing the CLI invocation. Empty-CHANGED
-            # fires on gh pr diff auth/network failures + the
-            # (theoretical) no-changed-files PR.
-            echo "max_turns=15" >> "$GITHUB_OUTPUT"
+            # this, --max-turns $-{{ ... }} expands to '--max-turns '
+            # (empty), failing the CLI invocation. Empty-CHANGED fires
+            # on gh pr diff auth/network failures + the (theoretical)
+            # no-changed-files PR. Grouped redirect (v0.6.24) silences
+            # the SC2129 style warning.
+            {
+              echo "is_workflow_only=false"
+              echo "model=$MODEL"
+              echo "max_turns=15"
+              echo "turns_estimated=0"
+              echo "files_count=0"
+              echo "lines_added=0"
+              echo "lines_deleted=0"
+              echo "threads_count=0"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -110,37 +138,106 @@ jobs:
           fi
           echo "model=$MODEL" >> "$GITHUB_OUTPUT"
 
-          # --- (c) adaptive max-turns (v0.6.23 / §5) ---
-          # Scope-based turn budget so large PRs (many files OR many prior
-          # unresolved threads to walk in FIX-PUSH FLOW) don't exhaust the
-          # default 15-turn budget. Concrete failure that motivated this:
-          # tokenomics PR #18 (23 docs files + 6 prior claude[bot] threads)
-          # exhausted the cap under v0.6.12 AND under v0.6.22's
-          # structured-output flow.
+          # --- (c) smart budget estimation (v0.6.25 / §5.5 Layer 1) ---
+          # Replaces v0.6.23's 4-bucket if-elif with a line-based
+          # formula. File count was a crude proxy; lines + edit-type +
+          # file-class is much better. Per-file cost in turns:
           #
-          # Buckets:
-          #   Trivial (Haiku) → 10
-          #   Standard (<10 files AND <3 prior threads) → 15 (current default)
-          #   Larger (≥10 files OR ≥3 prior threads) → 25
-          #   Very large (≥30 files OR ≥6 prior threads) → 40
-          MAX_TURNS=15
+          #   per_file_cost = 0.3 + added × tw × 1.0
+          #                       + modified × tw × 1.5      # context-heavy
+          #                       + deleted × tw × 0.1       # trivial
+          #
+          # type_weight tw (turns per line):
+          #   code (.ts/.py/.js/.go/.rs/.java/...) : 1/50
+          #   docs (.md/.txt/.rst/.adoc/...)       : 1/150
+          #   tests (.test.*/.spec.*/__tests__/*)   : 1/100
+          #   config (.yml/.toml/.json/.cfg)        : 1/100
+          #   derived (timeline.md/file-structure.md/decisions.md) : 0
+          #
+          #   estimated_turns = 10 + sum(per_file_cost) + 1.5 × prior_threads
+          #   max_turns = max(estimated × 1.2, 15)        # 20% safety margin
+          #   max_turns = min(max_turns, 60)              # ceiling; L5 retry above
+          #
+          # Emit overhead 10 (raised from initial 5 design): tokenomics
+          # #21 (26 docs files, +310/-235) used ~25 turns vs old-formula
+          # 16 — structured-output emit + JSON-schema retries + initial
+          # context loading cost ~5-10 turns themselves. Will retune from
+          # Layer 1.5 calibration data in v0.6.26+.
+          #
+          # `gh` is the source for additions/deletions + threads.
+          # `jq` is the inline estimator (preinstalled on ubuntu-latest
+          # runners; an earlier design used python3 but jq sidesteps the
+          # YAML-block-indent vs heredoc-content-indent dance).
+          # Calibration via the turns_estimated + turns_actually_used data
+          # points the post-step records (Layer 1.5).
+          FILE_COUNT=$(echo "$CHANGED" | wc -l | tr -d ' ')
+          # Count unresolved claude-bot threads. Best-effort: rate-limit
+          # or auth failures default to 0 (no escalation, fall back to
+          # the line-count-only estimate).
+          THREAD_COUNT=$(gh api graphql -f query='{repository(owner:"'"$(echo "$REPO" | cut -d/ -f1)"'",name:"'"$(echo "$REPO" | cut -d/ -f2)"'"){pullRequest(number:'"$PR_NUMBER"'){reviewThreads(first:50){nodes{isResolved comments(first:1){nodes{author{login}}}}}}}}' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false and (.comments.nodes[0].author.login == "claude" or .comments.nodes[0].author.login == "claude[bot]"))] | length' 2>/dev/null || echo 0)
+          THREAD_COUNT=${THREAD_COUNT:-0}
+
           if [ "$IS_TRIVIAL" = "true" ]; then
+            # Haiku route stays on a small flat budget — trivial PRs
+            # need ~5 turns; 10 leaves margin.
             MAX_TURNS=10
+            TURNS_ESTIMATED=10
+            LINES_ADDED=0
+            LINES_DELETED=0
+            echo "::notice title=Clud Bug 🐛::Trivial (Haiku) budget: max_turns=10."
           else
-            FILE_COUNT=$(echo "$CHANGED" | wc -l | tr -d ' ')
-            # Count unresolved claude-bot threads. Best-effort: rate-limit
-            # or auth failures default to 0 (no escalation, fall back to
-            # file-count tier).
-            THREAD_COUNT=$(gh api graphql -f query='{repository(owner:"'"$(echo "$REPO" | cut -d/ -f1)"'",name:"'"$(echo "$REPO" | cut -d/ -f2)"'"){pullRequest(number:'"$PR_NUMBER"'){reviewThreads(first:50){nodes{isResolved comments(first:1){nodes{author{login}}}}}}}}' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false and (.comments.nodes[0].author.login == "claude" or .comments.nodes[0].author.login == "claude[bot]"))] | length' 2>/dev/null || echo 0)
-            THREAD_COUNT=${THREAD_COUNT:-0}
-            if [ "$FILE_COUNT" -ge 30 ] || [ "$THREAD_COUNT" -ge 6 ]; then
-              MAX_TURNS=40
-            elif [ "$FILE_COUNT" -ge 10 ] || [ "$THREAD_COUNT" -ge 3 ]; then
-              MAX_TURNS=25
-            fi
-            echo "::notice title=Clud Bug 🐛::Turn budget: $MAX_TURNS ($FILE_COUNT files, $THREAD_COUNT prior unresolved claude threads)."
+            FILES_JSON=$(gh pr view "$PR_NUMBER" -R "$REPO" --json files --jq '.files' 2>/dev/null || echo '[]')
+            LINES_ADDED=$(echo "$FILES_JSON" | jq '[.[].additions] | add // 0' 2>/dev/null || echo 0)
+            LINES_DELETED=$(echo "$FILES_JSON" | jq '[.[].deletions] | add // 0' 2>/dev/null || echo 0)
+            LINES_ADDED=${LINES_ADDED:-0}
+            LINES_DELETED=${LINES_DELETED:-0}
+
+            # jq implements the formula from §5.5 Layer 1:
+            #   per_file_cost = 0.3 + pa×tw + mod×1.5×tw + pd×0.1×tw
+            #   estimated     = 10 + sum(per_file_cost) + 1.5×threads
+            # type_weight tw (turns per line; reciprocal of lines-per-turn):
+            #   code 1/50 = 0.02, docs 1/150 ≈ 0.00667,
+            #   tests/config 1/100 = 0.01, unknown 1/80 = 0.0125
+            # Emit overhead 10 (raised from 5 in initial design): empirical
+            # tokenomics #21 (26 docs files, +310/-235) used ~25 turns vs
+            # formula-predicted 16 — structured-output emit + JSON-schema
+            # retries + initial context loading cost ~5-10 turns themselves.
+            # 10 matches better; will retune from Layer 1.5 calibration data.
+            # ceil via (+ 0.9999999 | floor) since jq has no ceil.
+            TURNS_ESTIMATED=$(echo "$FILES_JSON" | jq --argjson threads "$THREAD_COUNT" '
+              def per_line(path):
+                if (path | test("\\.(test|spec)\\.|__tests__|^tests?/")) then 0.01
+                elif (path | test("\\.(md|txt|rst|adoc|mdx)$")) then 0.00666667
+                elif (path | test("\\.(yml|yaml|toml|json|cfg|ini|conf|tmpl)$")) then 0.01
+                elif (path | test("\\.(ts|tsx|py|js|jsx|mjs|cjs|go|rs|java|kt|rb|php|cs|c|cpp|h|hpp|swift|scala)$")) then 0.02
+                else 0.0125 end;
+              map(
+                select(.path != "docs/timeline.md"
+                       and .path != "docs/file-structure.md"
+                       and .path != "docs/decisions.md")
+                | (.additions) as $add | (.deletions) as $del
+                | (if $add < $del then $add else $del end) as $mod
+                | ($add - $mod) as $pa | ($del - $mod) as $pd
+                | per_line(.path) as $tw
+                | 0.3 + ($pa * $tw) + ($mod * 1.5 * $tw) + ($pd * 0.1 * $tw)
+              ) | (add // 0) + 10 + ($threads * 1.5) | (. + 0.9999999) | floor
+            ' 2>/dev/null || echo 15)
+            TURNS_ESTIMATED=${TURNS_ESTIMATED:-15}
+
+            # max_turns = ceil(estimated × 1.2), floor 15, ceiling 60
+            MAX_TURNS=$(( (TURNS_ESTIMATED * 12 + 9) / 10 ))
+            [ "$MAX_TURNS" -lt 15 ] && MAX_TURNS=15
+            [ "$MAX_TURNS" -gt 60 ] && MAX_TURNS=60
+            echo "::notice title=Clud Bug 🐛::Smart budget: estimated $TURNS_ESTIMATED turns → max_turns=$MAX_TURNS ($FILE_COUNT files, +$LINES_ADDED/-$LINES_DELETED lines, $THREAD_COUNT prior threads). v0.6.25 Phase 1; coefficients TBD from calibration data."
           fi
-          echo "max_turns=$MAX_TURNS" >> "$GITHUB_OUTPUT"
+          {
+            echo "max_turns=$MAX_TURNS"
+            echo "turns_estimated=$TURNS_ESTIMATED"
+            echo "files_count=$FILE_COUNT"
+            echo "lines_added=$LINES_ADDED"
+            echo "lines_deleted=$LINES_DELETED"
+            echo "threads_count=$THREAD_COUNT"
+          } >> "$GITHUB_OUTPUT"
 
   clud-bug-review:
     needs: paths-check
@@ -154,11 +251,15 @@ jobs:
       # the GitHub Checks API for any skill in .clud-bug.json's strictSkills
       # list (BB.3, v0.5.10+). No-op when strictSkills is unset.
       checks: write
-      # actions: read (v0.6.23 / §5) — claude-code-action's bundled
-      # github_ci MCP server needs this to introspect recent CI runs.
-      # Per-job GITHUB_TOKEN permissions aren't inherited, so this
-      # MUST be on the clud-bug-review job, not paths-check.
-      actions: read
+      # v0.6.23 attempted to add `actions: read` here for the github_ci
+      # MCP server bundled with claude-code-action. v0.6.24 backed it
+      # out: on private consumer repos the `pull_request` trigger
+      # silently stopped firing the workflow after the permissions
+      # block changed (validated against tokenomics — public agent-skills
+      # kept firing, private tokenomics/rezgen did not). claude-code-action
+      # warns about the missing `actions: read` but reviews still run
+      # correctly. Re-add via a separate path once we understand the
+      # private-repo trigger-registration semantics.
 
     steps:
       - uses: actions/checkout@v6
@@ -387,6 +488,30 @@ jobs:
             Not a hard cap (SDK doesn't expose max_tokens); brevity compounds
             across the org on every review.
 
+            Turn budget self-rationing (v0.6.25 / §5.5 Layer 2):
+            You are run with a finite `--max-turns` cap. The exact value, plus
+            the pre-flight estimate for this PR, lands in the per-PR prompt
+            section below as `max_turns=N, estimated=M, files=F, +A/-D lines, threads=T`.
+            Treat that as your budget, not a ceiling to test.
+
+            Rules:
+              - Reserve the LAST 5 turns for structured-output emit. It is
+                non-skippable; if you run out before emitting, the workflow
+                falls back to a synthetic summary scraped from your inline
+                findings (v0.6.26+ Layer 6) — strictly worse than a real one.
+              - Rough rates: ~1 turn per 50 lines of code, ~1 turn per 150 lines
+                of docs, ~1 turn per 100 lines of tests or config. Each prior
+                unresolved thread is ~1.5 turns to walk + decide.
+              - Every line of the diff MUST be in your scan. Never silently skip
+                a file. If you must shorten coverage to fit budget, switch from
+                deep-dive analysis to one-sentence per-file verdicts — but every
+                file gets a verdict, even if it's "no issues found".
+              - If you're falling behind pace (files_reviewed/files_total
+                materially less than turns_used/max_turns), broaden+shallow over
+                deep+narrow. Audit visibility lives in `per_skill_scan` — list
+                every file's verdict so a maintainer can verify nothing was
+                skipped.
+
             Incremental-diff handshake (v0.6.10+) — emit the SHA marker:
             At the very end of the summary (after the Skills-referenced footer,
             on its own line), append:
@@ -580,23 +705,53 @@ jobs:
             Review this pull request following the discipline in your
             system prompt — every rule about skill routing, comment
             format, the strict-mode header, the two-surface review
-            shape, and the FIX-PUSH FLOW applies.
+            shape, the FIX-PUSH FLOW, and (v0.6.25+) turn-budget
+            self-rationing applies.
+
+            ## Your turn budget for this PR (v0.6.25 / §5.5 Layer 2)
+
+            max_turns=${{ needs.paths-check.outputs.max_turns }},
+            estimated=${{ needs.paths-check.outputs.turns_estimated }},
+            files=${{ needs.paths-check.outputs.files_count }},
+            +${{ needs.paths-check.outputs.lines_added }}/-${{ needs.paths-check.outputs.lines_deleted }} lines,
+            prior_threads=${{ needs.paths-check.outputs.threads_count }}.
+
+            Plan accordingly per the "Turn budget self-rationing"
+            section in your system prompt. The estimate is the
+            pre-flight's best guess; the cap is the workflow's hard
+            stop. Reserve 5 turns for emit.
         id: clud-bug-review
 
       # v0.6.22 / 0.0.O: render the structured output to the summary
       # comment shape, post via gh pr comment. Guarded so we only run
       # when the action returned a non-empty structured payload
       # (max-retries hit → empty → fall through to the next step).
+      #
+      # v0.6.25 / §5.5 Layer 1.5 (calibration measurement): append a
+      # hidden HTML marker carrying the pre-flight estimate + the
+      # actual max_turns we passed to claude-code-action. Aggregation
+      # script lives in clud-bug usage --calibration (TBD v0.6.26+);
+      # for now, the marker is just an audit trail visible via
+      # `gh api ...issues/N/comments`.
       - name: Render + post structured review
         if: success() && steps.clud-bug-review.outputs.structured_output != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           STRUCTURED: ${{ steps.clud-bug-review.outputs.structured_output }}
+          TURNS_ESTIMATED: ${{ needs.paths-check.outputs.turns_estimated }}
+          MAX_TURNS: ${{ needs.paths-check.outputs.max_turns }}
+          FILES_COUNT: ${{ needs.paths-check.outputs.files_count }}
+          LINES_ADDED: ${{ needs.paths-check.outputs.lines_added }}
+          LINES_DELETED: ${{ needs.paths-check.outputs.lines_deleted }}
+          THREADS_COUNT: ${{ needs.paths-check.outputs.threads_count }}
         run: |
           set -euo pipefail
-          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.23 render --stdin)
-          gh pr comment "$PR_NUMBER" --body "$BODY"
+          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.25 render --stdin)
+          CALIBRATION="<!-- clud-bug-calibration: turns_estimated=$TURNS_ESTIMATED, max_turns=$MAX_TURNS, files=$FILES_COUNT, lines_added=$LINES_ADDED, lines_deleted=$LINES_DELETED, threads=$THREADS_COUNT -->"
+          gh pr comment "$PR_NUMBER" --body "$BODY
+
+          $CALIBRATION"
 
       # Fallback comment when the model couldn't produce schema-valid
       # output after max retries (structured_output is empty). Keeps a
@@ -634,7 +789,7 @@ jobs:
       # Letting the action's own failure fail the check is louder and right.
       - name: Strict mode — fail check on critical findings
         if: success()
-        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.23
+        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.25
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # v0.6.22 / 0.0.O: the summary is now posted by the workflow
