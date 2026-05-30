@@ -13,9 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (28 decisions)
+## 2026-05 (29 decisions)
 
 - **2026-05-29** — fix wcag-contrast: pt vs px thresholds + SC 2.4.13 level *(skills/color-algorithms)* — [decisions-branches/skills__color-algorithms.md](decisions-branches/skills__color-algorithms.md)
-- **2026-05-29** — feat: PR-C1 color algorithm skills (oklch-color-space, apca-contrast, wcag-contrast, chroma-harmonization, palette-relationships) *(skills/color-algorithms)* — [decisions-branches/skills__color-algorithms.md](decisions-branches/skills__color-algorithms.md)
-- *... 26 more decisions ...*
+- *... 27 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
