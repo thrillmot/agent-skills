@@ -18,6 +18,7 @@ These skills run inside any agent that loads skills.sh — Claude Code, Cursor, 
 | [`api-contract-enforcement`](skills/api-contract-enforcement/SKILL.md) | Flag PRs that change the shape, semantics, or error behavior of a public API without versioning or a migration path. Catches removed fields, renamed parameters, changed status codes, broken pagination, silent enum drift across HTTP/gRPC/GraphQL/SDK/CLI surfaces. |
 | [`pii-and-compliance`](skills/pii-and-compliance/SKILL.md) | Catch PII and auth material leaking into logs, error traces, analytics events, URLs, or third-party SDKs. Apply to logging calls, telemetry, error handlers, debug statements, and committed test fixtures. |
 | [`test-discipline`](skills/test-discipline/SKILL.md) | Flag the test-edit patterns that hollow out a suite over time: deleted assertions without replacement, mocks that hide the thing being tested, snapshot churn, `.skip`/`.only` left in the diff, time-dependent assertions without frozen time, assertions on internal state instead of observable behavior. |
+| [`skillforge`](skills/skillforge/SKILL.md) ✨ | Create or update a reusable agent skill. Use when you notice a repeated pattern, when a workflow should be persisted for future sessions, or when asked to forge/create/scaffold a new skill. **Vendored from [zakelfassi/skills-driven-development](https://github.com/zakelfassi/skills-driven-development) with attribution** — the canonical SkDD meta-skill (the skill that creates skills). MIT, Zak El Fassi. |
 
 ## Install
 
@@ -61,6 +62,15 @@ Whichever pattern applies, prefer the **collection layout** (`skills/<name>/SKIL
 1. Create `skills/<name>/SKILL.md` with frontmatter (`name`, `description`).
 2. Add a row to the table above.
 3. Open a PR.
+
+## Vendored skills (✨ in the table above)
+
+Skills marked with ✨ are **vendored verbatim from upstream authors** — kept here so they install alongside the thrillmade catalog and stay reachable from the same `npx skills add` command, but with original author + spec metadata preserved in the SKILL.md frontmatter.
+
+Current vendored skills:
+- `skillforge` — from Zak El Fassi's [skills-driven-development](https://github.com/zakelfassi/skills-driven-development) repo. The canonical SkDD meta-skill (the skill that creates skills). MIT licensed. Vendored at v2.0; we'll sync on his releases.
+
+**Why vendor:** the upstream skill is canonical for its methodology; reimplementing would fragment. Vendoring with attribution keeps users on the canonical artifact + makes it installable through the same channel as the rest of our catalog. Both source-of-truth (upstream) and local-copy (here) stay in sync via periodic refresh PRs.
 
 ## License
 
