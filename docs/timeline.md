@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (37 decisions)
+## 2026-05 (38 decisions)
 
-- **2026-05-30** — fix: add review_mode: dedicated to wig-review frontmatter *(skills/wig-review)* — [decisions-branches/skills__wig-review.md](decisions-branches/skills__wig-review.md)
-- *... 35 more decisions ...*
+- **2026-05-30** — Upgrade agent-skills to clud-bug v0.6.27 (Smart Budget Phase 3 — L3 mid-review check-in) *(chore/clud-bug-v0.6.26-v2)* — [decisions-branches/chore__clud-bug-v0.6.26-v2.md](decisions-branches/chore__clud-bug-v0.6.26-v2.md)
+- *... 36 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
