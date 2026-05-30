@@ -1,0 +1,129 @@
+name: New Skill Proposal
+description: Propose a new reusable skill for the agent-skills catalog (human-gated approval)
+title: "[skill-proposal] "
+labels: ["skill-proposal", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Skills-Driven Development — new-skill approval gate
+
+        Per the [thrillmade SkDD pragmatic-governance design](https://github.com/thrillmade/agent-skills#part-of-the-thrillmade-skdd-toolchain):
+        every new skill in this catalog needs a **human-approved issue
+        before a PR can land**. This gate exists because skill catalogs
+        accumulate noise faster than they accumulate signal — a maintainer
+        deciding "yes, this pattern is real + worth a reusable skill"
+        is the difference between a useful library and an unmaintained
+        sprawl.
+
+        **Approval criteria** (maintainer applies `skill-approved` label):
+        - The pattern is **observable** (you can point to 3+ real instances)
+        - The pattern is **recurring** (not a one-shot)
+        - No existing skill in the catalog already addresses it
+        - The proposed trigger is **specific** (not "review code quality" — too broad)
+
+        Speculative skills get closed with a comment. That's the gate.
+  - type: input
+    id: slug
+    attributes:
+      label: Proposed slug
+      description: kebab-case, lowercase, 1-64 chars. No leading/trailing hyphens. Verb-led where natural.
+      placeholder: enforce-api-versioning
+    validations:
+      required: true
+  - type: textarea
+    id: trigger
+    attributes:
+      label: When should this skill activate?
+      description: |
+        Be concrete. Name the file types, PR shapes, error messages,
+        or code patterns that should trip the skill. "When code is
+        bad" is not a trigger. "When `src/api/**/*.ts` changes
+        without a corresponding `CHANGELOG.md` version bump" is.
+      placeholder: |
+        Activates when a PR modifies `src/api/` or `openapi.yml`
+        without a corresponding version bump in `CHANGELOG.md`
+        OR `package.json`.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence — 3+ real examples of the pattern
+      description: |
+        Link real PRs, paste clud-bug finding excerpts, or describe
+        specific commits where this skill would have caught (or
+        produced) a finding. Agent proposers: this is non-negotiable
+        — you must cite real instances, not speculative scenarios.
+      placeholder: |
+        - thrillmade/myrepo PR #42 (missed breaking change)
+        - thrillmade/myrepo PR #67 (silent enum drift)
+        - Slack thread 2026-05-15 where the team retroactively realized…
+    validations:
+      required: true
+  - type: textarea
+    id: draft_description
+    attributes:
+      label: Draft frontmatter `description` field
+      description: |
+        One sentence. Terse. Imperative voice. No emoji. This will
+        become the `description:` field in the SKILL.md frontmatter
+        and is what every agent reads to decide whether to load
+        the skill on a given task.
+      placeholder: |
+        Flag PRs that change the shape, semantics, or error behavior
+        of a public API without versioning or a migration path.
+    validations:
+      required: true
+  - type: dropdown
+    id: review_mode
+    attributes:
+      label: Review mode (per clud-bug skill routing)
+      description: |
+        - **shared** (default): findings land in the standard Critical / Minor sections
+        - **dedicated**: findings get a dedicated H3 section in the PR review (use for domain-specific concerns like brand voice, compliance, API contracts)
+      options:
+        - shared
+        - dedicated
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - cross-repo catalog skill (goes in thrillmade/agent-skills)
+        - single-repo custom skill (lives in one repo's .claude/skills/)
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: applies_to
+    attributes:
+      label: applies_to filter (optional)
+      description: |
+        If this skill should ONLY load on PRs that touch specific
+        paths or file extensions, declare them here. Leaves the
+        skill unloaded on irrelevant PRs (saves tokens, reduces
+        noise). Format follows the v0.6.21 spec (paths + extensions).
+      placeholder: |
+        paths:
+          - src/api/**
+          - openapi.yml
+        extensions:
+          - ts
+          - py
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Self-check before submitting
+      options:
+        - label: I've searched existing skills in this catalog and confirmed no overlap
+          required: true
+        - label: My evidence section cites at least 3 real instances (PRs, findings, commits)
+          required: true
+        - label: My draft description is one sentence, imperative, no emoji
+          required: true
+        - label: (If agent-authored) I've verified the trigger is observable, not speculative
+          required: true

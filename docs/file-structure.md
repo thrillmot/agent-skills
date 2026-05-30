@@ -7,6 +7,7 @@ agent-skills
 ├── .claude
 │   └── skills
 ├── .github
+│   ├── ISSUE_TEMPLATE
 │   ├── workflows
 │   └── dependabot.yml
 ├── .logmind
