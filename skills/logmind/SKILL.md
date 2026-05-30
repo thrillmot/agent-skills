@@ -166,6 +166,48 @@ regardless of `--quiet` (JSON is primary output, not progress). The
 `click.secho` so red/yellow error/warning output still prints under
 `LOGMIND_QUIET=1` — only progress chatter (cyan/green) is suppressed.
 
+## Managing skills: `logmind skill` subgroup (v0.6.0+)
+
+`logmind skill` is the CLI subgroup for creating and validating SKILL.md
+files. It composes with Zak Elfassi's
+[`@zakelfassi/skdd`](https://zakelfassi.com/skdd-skills-driven-development)
+when `skdd` is on PATH; otherwise it degrades gracefully.
+
+### `logmind skill new <name>`
+
+Scaffolds a new SKILL.md against the [agentskills.io/v1](https://agentskills.io)
+spec.
+
+- If `skdd` is on PATH → delegates to `skdd forge <name>` (canonical SkDD
+  authoring path).
+- Otherwise → scaffolds a basic SKILL.md with required frontmatter fields +
+  a TODO trigger description.
+- Auto-decision-logs the skill creation via `logmind log` (audit trail).
+  Pass `--no-log` to skip the auto-log.
+
+```bash
+logmind skill new my-team-conventions \
+    --description "Apply our team's review checklist on every PR"
+```
+
+### `logmind skill test <name>`
+
+Validates a SKILL.md against the spec + logmind layered checks.
+
+- If `skdd` is on PATH → delegates to `skdd validate` first.
+- Layers logmind-specific checks: required frontmatter fields (`name` +
+  `description`), and a **soft size cap of 8 KB** (guards against skills
+  that bloat every agent load).
+- **Exits non-zero on any check failure** — use in CI to gate on skill
+  health.
+
+```bash
+logmind skill test my-team-conventions
+# ✓ skdd validate passed
+# ✓ frontmatter required fields: ok
+# ✓ size cap: 2934 bytes (cap: 8000)
+```
+
 ## Verifying install health
 
 `logmind doctor` (v0.2.4+) reports installed-vs-latest versions for logmind
@@ -254,6 +296,9 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.6.0**: `logmind skill new` / `logmind skill test` ship. When
+  `skdd` is on PATH, both delegate to it; otherwise logmind scaffolds /
+  validates standalone.
 
 ## Setup (one-time, per project)
 
@@ -282,6 +327,13 @@ logmind doctor             # confirm clean install
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
   someone touched outside logmind), not part of the normal flow.
+- **Don't reimplement `skdd forge` or `skdd validate` logic when `skdd`
+  is on PATH.** Use `logmind skill new` / `logmind skill test` — they
+  delegate to `skdd` automatically and layer logmind-specific checks on
+  top.
+- **Don't create SKILL.md files larger than 8 KB.** `logmind skill test`
+  enforces a soft 8 KB cap; oversized skills bloat every agent load and
+  will fail CI gates.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
