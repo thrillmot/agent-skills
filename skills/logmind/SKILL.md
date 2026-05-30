@@ -104,6 +104,23 @@ Unrelated working-tree changes stay unstaged. Use when:
 Rare for automated agents — they should be working on one task at a
 time and want the single-commit shape.
 
+**`--stage scoped` unstaged-tracked warning (v0.5.10+):** If you run
+`logmind log --stage scoped` and there are tracked files with unstaged
+modifications, logmind emits a stderr warning naming those files and
+suggests the fix:
+
+```
+Warning: --stage scoped commit may be incomplete.
+Unstaged tracked modifications: src/foo.py, src/bar.py
+To include them: git add src/foo.py src/bar.py && git commit --amend --no-edit
+```
+
+The commit still proceeds (non-blocking) — you may legitimately have
+unrelated tracked WIP. But if the warning names files relevant to the
+decision you just logged, run the suggested `git add … && git commit
+--amend --no-edit` before pushing. Untracked files (scratch artifacts,
+generated outputs) never trigger the warning.
+
 ## Branch-aware routing (automatic)
 
 On a feature branch the entry lands in
@@ -254,6 +271,11 @@ Common deltas you'll see if you're upgrading across a stretch:
 - **v0.3.0**: `logmind init` registers a git merge driver for
   `timeline.md` / `file-structure.md` so parallel-PR merges no longer
   conflict on the derived files. Doctor gains three rows tracking it.
+- **v0.5.10**: `logmind log --stage scoped` warns on stderr when tracked
+  files have unstaged modifications (non-blocking; commit still proceeds).
+  If the warning fires, inspect the named files and run
+  `git add <files> && git commit --amend --no-edit` if they belong in
+  the decision commit.
 
 ## Setup (one-time, per project)
 
@@ -282,6 +304,11 @@ logmind doctor             # confirm clean install
   log`** — it's already regenerated and staged. The standalone command is
   an escape hatch for unusual situations (a corrupted timeline, a tree
   someone touched outside logmind), not part of the normal flow.
+- **When using `--stage scoped`, don't ignore the unstaged-tracked warning
+  (v0.5.10+).** If logmind warns that tracked files are unstaged, check
+  whether those files belong in the decision commit. If they do, run
+  `git add <files> && git commit --amend --no-edit` before pushing —
+  otherwise your PR diff won't match its description.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
