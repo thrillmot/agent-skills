@@ -11,6 +11,8 @@ agent-skills
 │   └── dependabot.yml
 ├── .logmind
 │   └── config.yml
+├── .skill-update-todo
+│   └── v0.5.9.md
 ├── docs
 │   ├── decisions-branches
 │   ├── decisions-archive.md
