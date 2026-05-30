@@ -111,9 +111,24 @@ DTCG defines composite types where `$value` is an object, not a primitive:
         "letterSpacing": "0"
       }
     }
+  },
+  "transition": {
+    "default": {
+      "$type": "transition",
+      "$value": {
+        "duration": "{duration.fast}",
+        "delay": "0ms",
+        "timingFunction": {
+          "$type": "cubicBezier",
+          "$value": [0.4, 0, 0.2, 1]
+        }
+      }
+    }
   }
 }
 ```
+
+The `transition` composite bundles `duration`, `delay`, and `timingFunction` (itself a `cubicBezier` token). Sub-values can be aliased (`duration`, `delay`) or inlined (the `cubicBezier` here). Composite tokens render to the platform's native shape — CSS `transition` shorthand, Swift `UIViewPropertyAnimator` parameters, etc.
 
 Composite tokens can alias individual sub-values — useful for systems that share a font family across many typography tokens.
 

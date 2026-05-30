@@ -15,6 +15,7 @@ PR's CI run, so this file is always coherent with current `main`.
 
 ## 2026-05 (34 decisions)
 
+- **2026-05-29** — fix: design-token-naming [class] anchor → apca-contrast; semver description names rename rule pre-1.0; dtcg adds transition composite example *(skills/token-format)* — [decisions-branches/skills__token-format.md](decisions-branches/skills__token-format.md)
 - **2026-05-29** — feat: PR-C4 token-format skills (design-token-naming, dtcg-format, semver-design-tokens) *(skills/token-format)* — [decisions-branches/skills__token-format.md](decisions-branches/skills__token-format.md)
 - *... 32 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)

@@ -22,7 +22,7 @@ UDTS names tokens so that an agent or linter can derive the token's class and co
 
 ## The prefix-loaded convention
 
-Every UDTS token name is `<prefix>-<role-or-kind>-<modifier>-<stop>-<state>`. The first segment — the **prefix** — declares the token's [class](https://github.com/thrillmade/agent-skills/tree/main/skills/oklch-color-space) and [kind](https://github.com/thrillmade/agent-skills/tree/main/skills/oklch-color-space).
+Every UDTS token name is `<prefix>-<role-or-kind>-<modifier>-<stop>-<state>`. The first segment — the **prefix** — declares the token's [class](https://github.com/thrillmade/agent-skills/tree/main/skills/apca-contrast) (contrast-bound vs free, defined in `apca-contrast`) and kind (text / surface / border / ui / illustration / decorative / brand-spot, defined in the UDTS spec).
 
 ### Contrast-bound prefixes
 

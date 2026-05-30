@@ -1,7 +1,7 @@
 ---
 name: semver-design-tokens
 description: |
-  Use when applying SemVer to a design-token release, computing a version bump from a token-tree diff, or auditing a release for correct severity. Names the UDTS auto-compute policy (major = remove/rename/type-change; minor = add; patch = value-only or alias-rebind-preserving-value), the alias-chain awareness rule (compute by resolved values, not source paths), the pre-1.0 relaxation (removals are minor not major), the snapshot storage convention (`snapshots/v<X>.dtcg.json`), and the deprecation cycle (warn in minor, remove in next major). Cite when an agent picks a bump by intuition rather than by computing from the diff.
+  Use when applying SemVer to a design-token release, computing a version bump from a token-tree diff, or auditing a release for correct severity. Names the UDTS auto-compute policy (major = remove/rename/type-change/class-change; minor = add; patch = value-only or alias-rebind-preserving-value), the alias-chain awareness rule (compute by resolved values, not source paths), the pre-1.0 relaxation (removals AND renames are minor not major; type changes remain major), the snapshot storage convention (`snapshots/v<X>.dtcg.json`), and the deprecation cycle (warn in minor, remove in next major). Cite when an agent picks a bump by intuition rather than by computing from the diff, or when an agent classifies a pre-1.0 rename as major.
 ---
 
 # SemVer for design tokens
@@ -119,7 +119,7 @@ For each release candidate:
 1. **Diff resolved values**, not source paths.
 2. **Classify every diff entry** by the bump policy.
 3. **Bump = max severity** across all entries.
-4. **Pre-1.0 relaxation applied** correctly (removals → minor).
+4. **Pre-1.0 relaxation applied** correctly (removals AND renames → minor; type changes remain major).
 5. **Snapshot stored** at `snapshots/v<new>.dtcg.json` before tagging.
 6. **Deprecation cycle honored** — no removals without a prior minor that marked the token deprecated.
 
