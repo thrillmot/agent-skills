@@ -13,8 +13,8 @@ PR's CI run, so this file is always coherent with current `main`.
 ---
 
 
-## 2026-05 (30 decisions)
+## 2026-05 (31 decisions)
 
-- **2026-05-29** — fix: stale SC 2.4.13 (AAA) label in Sources footer; add SC 2.4.12 (AAA Enhanced) reference *(skills/color-algorithms)* — [decisions-branches/skills__color-algorithms.md](decisions-branches/skills__color-algorithms.md)
-- *... 28 more decisions ...*
+- **2026-05-29** — feat: PR-C2 typography skills (type-scale, line-height-grid) *(skills/typography)* — [decisions-branches/skills__typography.md](decisions-branches/skills__typography.md)
+- *... 29 more decisions ...*
 - **2026-05-26** — Initialize logmind decision tracking *(chore/migrate-to-thrillmade)* — [decisions-branches/chore__migrate-to-thrillmade.md](decisions-branches/chore__migrate-to-thrillmade.md)
