@@ -40,7 +40,8 @@ agent-skills
 │   ├── test-discipline
 │   ├── token-frugal-tooling
 │   ├── type-scale
-│   └── wcag-contrast
+│   ├── wcag-contrast
+│   └── web-interface-guidelines-review
 ├── .cursorrules
 ├── .gitattributes
 ├── .gitignore
