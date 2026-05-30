@@ -65,3 +65,16 @@ Whichever pattern applies, prefer the **collection layout** (`skills/<name>/SKIL
 ## License
 
 MIT.
+
+---
+
+## Part of the thrillmade SkDD toolchain
+
+[Skills-Driven Development](https://zakelfassi.com/skdd-skills-driven-development) (Zak Elfassi's methodology) gives you the loop; the thrillmade toolchain ships the parts:
+
+- **[logmind](https://github.com/thrillmade/logmind)** — the *why* behind every change (decision logging as commit primitive); skill-creation + testing + auditing
+- **[clud-bug](https://github.com/thrillmade/clud-bug)** — skill-driven PR review at gate time; every finding cites the skill that motivated it
+- **[agent-skills](https://github.com/thrillmade/agent-skills)** — public catalog of reusable skills (this repo)
+- **[skills.sh](https://skills.sh)** — skill discovery + install
+
+End-to-end agentic auto dev: write skills first → log the *why* → run them against PRs → iterate based on usage. The tools work independently; better together.
