@@ -841,11 +841,49 @@ jobs:
           THREADS_COUNT: ${{ needs.paths-check.outputs.threads_count }}
         run: |
           set -euo pipefail
-          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.27 render --stdin)
+          BODY=$(printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.29 render --stdin)
           CALIBRATION="<!-- clud-bug-calibration: turns_estimated=$TURNS_ESTIMATED, max_turns=$MAX_TURNS, files=$FILES_COUNT, lines_added=$LINES_ADDED, lines_deleted=$LINES_DELETED, threads=$THREADS_COUNT -->"
           gh pr comment "$PR_NUMBER" --body "$BODY
 
           $CALIBRATION"
+
+      # v0.6.29 / Component 4: pipe structured_output through
+      # `clud-bug update-skill-usage` to compute the per-skill loads +
+      # citations delta from this one review. Writes to the ephemeral
+      # workspace .clud-bug.json AND uploads as a workflow artifact
+      # (90-day retention). v0.6.30 will add aggregation logic so
+      # `clud-bug usage --health` reads + merges artifacts across runs.
+      #
+      # Why artifact instead of committing back to main: committing
+      # would require `contents: write` permission (private-repo
+      # trigger-firing regression risk per v0.6.23 hotfix) + race
+      # handling. Artifacts are GitHub-native persistence with zero
+      # permission expansion + zero commit noise.
+      - name: Update skill-usage tracking
+        if: success() && steps.clud-bug-review.outputs.structured_output != ''
+        continue-on-error: true  # don't fail the whole review if usage update flakes
+        env:
+          STRUCTURED: ${{ steps.clud-bug-review.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          mkdir -p .claude/skills
+          # If a .clud-bug.json already exists in the workspace (PR's
+          # snapshot), keep it. Otherwise initialize an empty shell so
+          # update-skill-usage has something to merge into.
+          if [ ! -f .claude/skills/.clud-bug.json ]; then
+            echo '{"version": 1}' > .claude/skills/.clud-bug.json
+          fi
+          printf '%s\n' "$STRUCTURED" | npx --yes clud-bug@0.6.29 update-skill-usage --stdin
+          echo "::notice title=skill-usage::recorded review delta to ephemeral .clud-bug.json (v0.6.30 will add cross-review aggregation)"
+
+      - name: Upload skill-usage artifact
+        if: success() && steps.clud-bug-review.outputs.structured_output != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: clud-bug-skill-usage-pr-${{ github.event.pull_request.number }}
+          path: .claude/skills/.clud-bug.json
+          retention-days: 90
 
       # Fallback comment when the model couldn't produce schema-valid
       # output after max retries (structured_output is empty). Keeps a
@@ -942,7 +980,7 @@ jobs:
       # Letting the action's own failure fail the check is louder and right.
       - name: Strict mode — fail check on critical findings
         if: success()
-        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.27
+        uses: thrillmade/clud-bug/.github/actions/strict-mode-gate@v0.6.29
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # v0.6.22 / 0.0.O: the summary is now posted by the workflow

@@ -7,16 +7,16 @@ files like `CLAUDE.md` or `.cursorrules` are stubs that point here so the
 guidance lives in one place.
 
 <!-- logmind-start -->
-<!-- logmind-block-version: v6-pointer -->
+<!-- logmind-block-version: v7-pointer -->
 ## Decision logging — `logmind log` is the commit primitive
 
-This project uses [logmind](https://logmind.dev). **`logmind log` replaces `git add` + `git commit` + `git push` for any change that carries a decision** — do not run those git commands directly.
+**`logmind log` replaces `git add` + `git commit` + `git push` for any change that carries a decision** — do not run those git commands directly.
 
 ```bash
 logmind log "summary" -r "why" -a "alternative" -i "implication"
 ```
 
-What counts as a decision, branch routing, `--stage scoped` for unrelated WIP, `logmind doctor`, and the required-reading list ([`docs/timeline.md`](docs/timeline.md), [`docs/decisions.md`](docs/decisions.md), [`docs/file-structure.md`](docs/file-structure.md), `docs/decisions-branches/<branch>.md`) all live in the **`logmind` agent skill** at https://github.com/thrillmade/agent-skills/tree/main/skills/logmind.
+This project uses [logmind](https://logmind.dev). What counts as a decision, branch routing, `--stage scoped` for unrelated WIP, `logmind doctor`, and the required-reading list ([`docs/timeline.md`](docs/timeline.md), [`docs/decisions.md`](docs/decisions.md), [`docs/file-structure.md`](docs/file-structure.md), `docs/decisions-branches/<branch>.md`) all live in the **`logmind` agent skill** at https://github.com/thrillmade/agent-skills/tree/main/skills/logmind.
 <!-- logmind-end -->
 
 ## Project Overview
@@ -44,5 +44,5 @@ For agent invocations of the `clud-bug` CLI, prefer `CLUD_BUG_QUIET=1`
 (or pass `--quiet`) — suppresses progress chatter and emits a single
 `ok <key-value>` summary line per command.
 
-_Installed at clud-bug v0.6.27._
+_Installed at clud-bug v0.6.29._
 <!-- clud-bug-end -->
