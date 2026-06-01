@@ -13,7 +13,8 @@ agent-skills
 ├── .logmind
 │   └── config.yml
 ├── .skill-update-todo
-│   └── v0.6.1.md
+│   ├── v0.6.1.md
+│   └── v0.6.5.md
 ├── docs
 │   ├── decisions-branches
 │   ├── decisions-archive.md
