@@ -269,6 +269,32 @@ command, you should not run it by hand in the normal flow — it exists
 for the merge driver and as an escape hatch (corrupted file, externally
 modified tree).
 
+## Skill suggestion: `logmind skill suggest` (v0.6.5+)
+
+`logmind skill suggest` scans recent decision-log entries for tokens that
+appear across many distinct decisions — a heuristic signal that "we keep
+talking about X, maybe X should have its own skill." Output is a pre-filled
+GitHub-issue draft matching the `new-skill.yml` template.
+
+**This command is human-initiated and produces a draft only. It never
+opens a PR, never creates a skill, and never takes any automated action.**
+Skill lifecycle is always human-gated.
+
+```bash
+logmind skill suggest                        # scan last 30 days, ≥3 decisions, top 5 suggestions
+logmind skill suggest --since 7d --top 10   # narrow window, more results
+logmind skill suggest --min-decisions 5     # tighter signal threshold
+logmind skill suggest --write-drafts /tmp/proposals/  # write each draft to a .md file
+logmind skill suggest --json                # machine-readable output
+```
+
+Detection heuristics:
+- Tokenizes entries into kebab-case / PascalCase / acronym / snake_case identifiers.
+- Filters stop words and generic structural terms.
+- Counts distinct-decision occurrences (a token mentioned 5× in one decision = 1, not 5).
+- Drops tokens that already match an existing skill name.
+- Ranks by number of distinct decisions; caps at `--top` results.
+
 ## Upgrading: `logmind init` prints the changelog
 
 When you run `pip install --upgrade logmind && logmind init` in an
@@ -307,6 +333,9 @@ Common deltas you'll see if you're upgrading across a stretch:
   `git.auto_rebase: true` in `.logmind/config.yml`. Narrow scope: only
   fires when the gap between your branch and `origin/<default>` is
   exactly `docs/timeline.md`. Always uses `--force-with-lease`.
+- **v0.6.5**: `logmind skill suggest` added — human-initiated pattern
+  detection that proposes candidate skill topics as GH-issue drafts.
+  Never auto-creates or auto-PRs a skill.
 
 ## Setup (one-time, per project)
 
@@ -342,6 +371,11 @@ logmind doctor             # confirm clean install
   If the gap between branches includes code files, `docs/file-structure.md`,
   or any file other than `docs/timeline.md`, auto-rebase will refuse and
   emit a heads-up — handle the rebase manually.
+- **Don't auto-PR or auto-create a skill based on `logmind skill suggest`
+  output.** `logmind skill suggest` produces a draft GH-issue body for
+  human review only. Skill lifecycle is always human-gated: a human reads
+  the draft, decides, and opens (or discards) the issue. Never automate
+  this step.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
