@@ -215,6 +215,41 @@ regardless of `--quiet` (JSON is primary output, not progress). The
 `click.secho` so red/yellow error/warning output still prints under
 `LOGMIND_QUIET=1` — only progress chatter (cyan/green) is suppressed.
 
+## Skill lifecycle: `logmind skill audit` (v0.6.4+)
+
+Use `logmind skill audit` to get a staleness read on every `SKILL.md` in
+`.claude/skills/`. This is the **author-side** view of skill health; it
+pairs with `clud-bug usage --health` (the enforcement/load-vs-citation
+read) for a complete picture.
+
+```bash
+logmind skill audit          # human-readable table: name, status, bytes, decisions, last touched
+logmind skill audit --json   # machine-readable array per skill, status enriched
+```
+
+Example summary line:
+
+```
+ok skill: audit 7 skills (3 active, 2 aging, 2 ghost)
+```
+
+#### Status thresholds
+
+| Status | Condition | What it means |
+|--------|-----------|---------------|
+| **ghost** | `decision_count == 0` AND `bytes > 2000` | Loaded into every context but the author has never iterated on it; candidate for usage-side confirmation + archive |
+| **aging** | last-modified > 90 days ago | Was useful once, hasn't been touched in a quarter |
+| **active** | otherwise | Healthy |
+
+`last_modified` is resolved via `git log -1 --format=%cs --` (falls back
+to file mtime). `decisions` counts mentions across `docs/decisions.md` +
+`docs/decisions-branches/*.md`.
+
+Use audit output to decide which skills to refresh, archive, or promote.
+Ghost skills in particular should be investigated: a large skill that
+never appears in decision logs is burning context budget without visible
+payback.
+
 ## Verifying install health
 
 `logmind doctor` (v0.2.4+) reports installed-vs-latest versions for logmind
@@ -307,6 +342,9 @@ Common deltas you'll see if you're upgrading across a stretch:
   `git.auto_rebase: true` in `.logmind/config.yml`. Narrow scope: only
   fires when the gap between your branch and `origin/<default>` is
   exactly `docs/timeline.md`. Always uses `--force-with-lease`.
+- **v0.6.4**: `logmind skill audit` added — author-side staleness read
+  for every SKILL.md in `.claude/skills/`, with `active`/`aging`/`ghost`
+  status classification and `--json` output.
 
 ## Setup (one-time, per project)
 
@@ -342,6 +380,9 @@ logmind doctor             # confirm clean install
   If the gap between branches includes code files, `docs/file-structure.md`,
   or any file other than `docs/timeline.md`, auto-rebase will refuse and
   emit a heads-up — handle the rebase manually.
+- **Don't ignore `ghost` skills surfaced by `logmind skill audit`.** A skill
+  with zero decision-log mentions and > 2 000 bytes is burning context budget
+  every session without visible payback — investigate, refresh, or archive it.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
