@@ -269,6 +269,38 @@ command, you should not run it by hand in the normal flow — it exists
 for the merge driver and as an escape hatch (corrupted file, externally
 modified tree).
 
+## Skill size budgeting: `logmind skill bench` (v0.6.3+)
+
+Every SKILL.md loaded by an agent occupies context-window space. Use
+`logmind skill bench <name>` to measure what a skill costs and whether
+it needs trimming.
+
+```bash
+logmind skill bench logmind          # human-readable table: bytes, est. tokens, status, per-section breakdown
+logmind skill bench logmind --json   # machine-readable for automation
+```
+
+### Status buckets
+
+| Status | Threshold | Meaning |
+|---|---|---|
+| `tight` | ≤ 2 000 bytes (~500 tokens) | Focused, well-trimmed |
+| `typical` | ≤ 6 000 bytes (~1 500 tokens) | Most skills land here |
+| `verbose` | ≤ 8 000 bytes (~2 000 tokens) | Past budget — suggestions emitted |
+| `over-budget` | > 8 000 bytes | Past hard cap — split recommended |
+
+### Suggestions emitted at `verbose` and above
+
+- **Dominant section** (> 30 % of total bytes): "Section 'X' is N bytes
+  (Y% of total) — consider linking out OR moving to its own skill."
+- **Large HTML comment volume**: agents load comments too; move authoring
+  notes to a sibling `NOTES.md`.
+- **Past the 8 KB hard cap**: "split into multiple focused skills."
+
+Pair with `clud-bug usage --health` (v0.6.28+) for the complete picture:
+`bench` tells you what each skill *costs*; `usage` tells you whether it
+*earns* that cost in citations.
+
 ## Upgrading: `logmind init` prints the changelog
 
 When you run `pip install --upgrade logmind && logmind init` in an
@@ -307,6 +339,10 @@ Common deltas you'll see if you're upgrading across a stretch:
   `git.auto_rebase: true` in `.logmind/config.yml`. Narrow scope: only
   fires when the gap between your branch and `origin/<default>` is
   exactly `docs/timeline.md`. Always uses `--force-with-lease`.
+- **v0.6.3**: `logmind skill bench <name>` reports skill file size in
+  bytes + estimated tokens + status bucket + per-section breakdown +
+  trim suggestions. Use to keep skills within the 6 KB typical / 8 KB
+  hard-cap budget.
 
 ## Setup (one-time, per project)
 
@@ -342,6 +378,9 @@ logmind doctor             # confirm clean install
   If the gap between branches includes code files, `docs/file-structure.md`,
   or any file other than `docs/timeline.md`, auto-rebase will refuse and
   emit a heads-up — handle the rebase manually.
+- **Don't let a skill grow past 8 KB without running `logmind skill bench`.**
+  Skills in the `verbose` or `over-budget` bucket waste agent context on
+  every load; trim dominant sections or split into focused sub-skills.
 - Don't log every tiny edit. The 20-line rule is a guideline; use judgement.
 - Don't write the decision after the fact in past tense for trivial code.
 - Don't reword a decision someone else already logged — link or extend it.
